@@ -1,13 +1,16 @@
 /**
  * ShotForge ranking engine — shared by the CLI and the web server.
  * ingest → audio(+energy) → whisper CUDA → shot detect → candidates (speech ∪
- * visual) → heuristic pre-score → lfm3 re-rank → lfm3-vl frames → ensemble.
+ * visual) → heuristic pre-score → lfm3 re-rank → lfm3-vl frames → ensemble →
+ * omni analysis → cut snap → caption translate → render (+ checks) →
+ * metadata + thumbnails.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { PATHS, verifyPaths } from "../paths.js";
+import { unloadModel } from "../ollama.js";
 import { ingest } from "./ingest.js";
 import { extractAudio, energyCurve } from "./audio.js";
 import { transcribe } from "./transcribe.js";
@@ -18,6 +21,9 @@ import { llmScore } from "./score-llm.js";
 import { ensemble } from "./ensemble.js";
 import { analyzeClips, applyOmniAdjustments } from "./omni.js";
 import { renderClip } from "./render.js";
+import { translateWords } from "./translate.js";
+import { generateMetadata } from "./metadata.js";
+import { renderThumbnail } from "./thumb.js";
 
 export const STAGES = [
   "ingest",
@@ -67,7 +73,8 @@ export function resolveSource(input, { downloadsDir } = {}) {
  * @param {string} opts.source          file path or http(s) URL
  * @param {string} opts.workRoot        root for .work dirs
  * @param {number} [opts.top=10]
- * @param {{pack?:string, ratio?:string, positionPct?:number, scalePct?:number}} [opts.render]
+ * @param {{pack?:string, positionPct?:number, scalePct?:number}} [opts.render]
+ * @param {string} [opts.translate="none"]  caption translation mode (TRANSLATE_MODES)
  * @param {boolean} [opts.autoRender=true]  render every ranked clip after scoring
  * @param {(stage:string, note?:string)=>void} [opts.onStage]
  * @param {(line:string)=>void} [opts.log]
@@ -77,6 +84,7 @@ export async function runRank({
   workRoot,
   top = 10,
   render: renderOpts = {},
+  translate = "none",
   autoRender = true,
   onStage = () => {},
   log = () => {},
@@ -142,16 +150,38 @@ export async function runRank({
   onStage("ensemble");
   t = Date.now();
   const ranked = ensemble(shortlist, { top });
+  // Internal clips carry their final rank too (omni/snap/thumb logs and
+  // thumb_<rank>.jpg naming all read clip.rank).
+  for (let i = 0; i < ranked.length; i += 1) ranked[i].rank = i + 1;
   timings.ensemble = ms(t);
 
   onStage("omni");
   t = Date.now();
   await analyzeClips(videoPath, ranked, workDir, log);
   for (const c of ranked) applyOmniAdjustments(c);
-  timings.omni = ms(t);
 
-  // Word-level caption timing for each clip (sliced from the transcript).
-  const wordsByClip = clipWords(workDir, ranked);
+  // Word-level caption timing for each clip (sliced by the FINAL window), then
+  // snap cut points to scene boundaries without ever cutting mid-word.
+  const absWords = transcriptWords(workDir);
+  const wordsByClip = clipWords(absWords, ranked);
+  snapCutsToShots(ranked, shots, absWords, wordsByClip, log);
+
+  // Caption translation (ClipShlip headline feature): word-for-word map so
+  // karaoke timings survive; sequential, before the render phase.
+  if (translate && translate !== "none") {
+    onStage("omni", `translating captions → ${translate}`);
+    try {
+      for (const clip of ranked) {
+        const words = wordsByClip.get(clip);
+        if (!words?.length) continue;
+        wordsByClip.set(clip, await translateWords(words, translate, log));
+      }
+    } catch (err) {
+      log(`translate: skipped (${err.message}) — captions stay in the original language`);
+    }
+    await unloadModel(PATHS.models.text);
+  }
+  timings.omni = ms(t);
 
   const result = {
     source: videoPath,
@@ -176,15 +206,19 @@ export async function runRank({
       llm: c.llm?.score ?? null,
       vision: c.vision?.score ?? null,
       video: null,
+      checks: null,
+      meta: null,
+      thumb: null,
     })),
   };
 
   if (autoRender) {
     onStage("render");
     t = Date.now();
+    // Renders are always vertical 9:16 — the ratio passthrough is gone.
     const renderSettings = {
-      pack: renderOpts.pack ?? "beast-pop",
-      ratio: renderOpts.ratio ?? "9:16",
+      pack: renderOpts.pack ?? "highlight",
+      ratio: "9:16",
       positionPct: renderOpts.positionPct ?? null,
       scalePct: renderOpts.scalePct ?? 1,
     };
@@ -192,7 +226,7 @@ export async function runRank({
     for (let i = 0; i < ranked.length; i += 1) {
       const clip = ranked[i];
       log(`rendering clip ${i + 1}/${ranked.length} (${renderSettings.pack}, ${renderSettings.ratio})…`);
-      const { file } = await renderClip({
+      const rendered = await renderClip({
         probe,
         clip: {
           ...clip,
@@ -202,10 +236,26 @@ export async function runRank({
         workDir,
         opts: { ...renderSettings, shots, faceDetections: clip.faceDetections ?? null },
       });
-      result.clips[i].video = `/media/${result.workId}/${file.split(/[\\/]/).pop()}`;
+      result.clips[i].video = `/media/${result.workId}/${rendered.file.split(/[\\/]/).pop()}`;
+      result.clips[i].checks = rendered.checks ?? null; // QC plan (Agent A) lands progressively
       onStage("render", `${i + 1}/${ranked.length}`);
     }
     timings.render = ms(t);
+
+    // Post-render packaging: social metadata + poster thumbnails per clip.
+    for (let i = 0; i < ranked.length; i += 1) {
+      result.clips[i].meta = await generateMetadata(ranked[i], log);
+      onStage("render", `meta ${i + 1}/${ranked.length}`);
+    }
+    for (let i = 0; i < ranked.length; i += 1) {
+      try {
+        const thumb = await renderThumbnail({ videoPath, clip: ranked[i], workDir });
+        result.clips[i].thumb = `/media/${result.workId}/${thumb.split(/[\\/]/).pop()}`;
+      } catch (err) {
+        log(`thumb failed on #${ranked[i].rank}: ${err.message}`);
+      }
+      onStage("render", `thumb ${i + 1}/${ranked.length}`);
+    }
   }
 
   result.totalWallSec = ms(t0);
@@ -214,27 +264,110 @@ export async function runRank({
   return { result, workDir, videoPath, probe, shots };
 }
 
-/** Slice the whisper transcript into per-clip, clip-relative word timings. */
-function clipWords(workDir, ranked) {
+/** Load the whisper transcript as absolute-time words (snapping + slicing). */
+function transcriptWords(workDir) {
   const tPath = resolve(workDir, "transcribe.json");
-  const map = new Map();
-  if (!existsSync(tPath)) return map;
+  if (!existsSync(tPath)) return [];
   const doc = JSON.parse(readFileSync(tPath, "utf8"));
-  for (const clip of ranked) {
-    const offset = clip.finalStart ?? clip.start;
-    const words = [];
-    for (const seg of doc.transcription ?? []) {
-      for (const tok of seg.tokens ?? []) {
-        const word = (tok.text ?? "").trim();
-        if (!word || word.startsWith("[") || /^[_\-.,]+$/.test(word)) continue;
-        const s = (tok.offsets?.from ?? 0) / 1000;
-        const e = (tok.offsets?.to ?? 0) / 1000;
-        if (s >= (clip.start ?? clip.finalStart) - 0.3 && e <= (clip.end ?? clip.finalEnd) + 0.3) {
-          words.push({ start: Math.max(0, s - offset), end: Math.max(0, e - offset), word });
-        }
-      }
+  const words = [];
+  for (const seg of doc.transcription ?? []) {
+    for (const tok of seg.tokens ?? []) {
+      const word = (tok.text ?? "").trim();
+      if (!word || word.startsWith("[") || /^[_\-.,]+$/.test(word)) continue;
+      words.push({
+        start: (tok.offsets?.from ?? 0) / 1000,
+        end: (tok.offsets?.to ?? 0) / 1000,
+        word,
+      });
     }
-    map.set(clip, words);
   }
+  return words;
+}
+
+/**
+ * Slice absolute transcript words into one clip's clip-relative captions.
+ * Slices by the FINAL window (±0.25s tolerance for boundary tokens) — words
+ * trimmed out by omni/LLM/snap are dropped, never clamped to 0 (caption
+ * desync bug).
+ */
+function sliceWordsForClip(absWords, clip) {
+  const start = clip.finalStart ?? clip.start;
+  const end = clip.finalEnd ?? clip.end;
+  const words = [];
+  for (const w of absWords) {
+    if (w.start < start - 0.25 || w.end > end + 0.25) continue;
+    const relStart = w.start - start;
+    const relEnd = w.end - start;
+    // Nothing audible left inside the window → drop the token entirely.
+    if (relEnd <= relStart || relEnd <= 0.01) continue;
+    words.push({ start: Math.max(0, relStart), end: relEnd, word: w.word });
+  }
+  return words;
+}
+
+/** Slice the whisper transcript into per-clip, clip-relative word timings. */
+function clipWords(absWords, ranked) {
+  const map = new Map();
+  for (const clip of ranked) map.set(clip, sliceWordsForClip(absWords, clip));
   return map;
+}
+
+const SNAP_RANGE = 0.7; // max distance a shot boundary may move a cut point
+const SNAP_MIN_GAP = 0.25; // snapped boundary must sit in a word gap this wide
+
+/**
+ * Snap each clip's finalStart/finalEnd to the nearest scene-shot boundary
+ * (within SNAP_RANGE) when that boundary does not cut mid-word, then re-slice
+ * the clip's caption words from the updated window.
+ */
+function snapCutsToShots(ranked, shots, absWords, wordsByClip, log = () => {}) {
+  if (!shots.length) return;
+  for (const clip of ranked) {
+    const start = clip.finalStart ?? clip.start;
+    const end = clip.finalEnd ?? clip.end;
+    const snappedStart = snapEdge(start, shots, absWords);
+    const snappedEnd = snapEdge(end, shots, absWords);
+    if (snappedStart === start && snappedEnd === end) continue;
+    if (snappedEnd - snappedStart < 5) continue; // never snap a clip into a stub
+    clip.finalStart = round2(snappedStart);
+    clip.finalEnd = round2(snappedEnd);
+    clip.durationSec = round2(clip.finalEnd - clip.finalStart);
+    wordsByClip.set(clip, sliceWordsForClip(absWords, clip));
+    log(
+      `snap #${clip.rank}: start ${start.toFixed(2)}→${clip.finalStart} · end ${end.toFixed(2)}→${clip.finalEnd}`,
+    );
+  }
+}
+
+/** Nearest shot boundary to t within SNAP_RANGE whose gap check passes. */
+function snapEdge(t, shots, absWords) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const s of shots) {
+    for (const b of [s.start, s.end]) {
+      const dist = Math.abs(b - t);
+      if (dist > SNAP_RANGE || dist >= bestDist) continue;
+      if (!gapOk(b, absWords)) continue;
+      best = b;
+      bestDist = dist;
+    }
+  }
+  return best ?? t;
+}
+
+/** True when t falls in a >= 0.25s gap between words, or before/after speech. */
+function gapOk(t, absWords) {
+  let prevEnd = -Infinity;
+  let nextStart = Infinity;
+  for (const w of absWords) {
+    if (w.start < t && w.end > t) return false; // boundary would cut this word
+    if (w.end <= t && w.end > prevEnd) prevEnd = w.end;
+    if (w.start >= t && w.start < nextStart) nextStart = w.start;
+  }
+  if (prevEnd === -Infinity || nextStart === Infinity) return true;
+  return nextStart - prevEnd >= SNAP_MIN_GAP;
+}
+
+function round2(v) {
+  return Math.round(v * 100) / 100;
 }

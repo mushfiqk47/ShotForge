@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
  * ShotForge web server (port 8899).
- *   POST /api/rank        {source: "path or URL", top?}  → {jobId}
+ *   POST /api/rank        {source: "path or URL", top?, translate?} → {jobId}
  *   POST /api/upload      raw body + ?name=file.mp4      → {path}
  *   GET  /api/progress/:jobId   SSE stream (stage/note/log/done/error)
  *   GET  /api/rank/:jobId                               → rank JSON
- *   POST /api/render      {jobId, indexes, pack, ratio}  → {outputs}
+ *   POST /api/render      {jobId, indexes, pack}         → {outputs}  (always 9:16)
  *   GET  /api/jobs                                      → job list
- *   GET  /media/<base64url-workid>/<file>               → rendered mp4 / preview
+ *   GET  /media/<base64url-workid>/<file>               → rendered mp4 / thumb / preview
  *   GET  /                                              → web UI
  */
 import http from "node:http";
@@ -19,6 +19,7 @@ import { runRank, resolveSource } from "./pipeline/rank.js";
 import { renderClip } from "./pipeline/render.js";
 import { renderStylePreview, renderSamplePreview } from "./pipeline/preview.js";
 import { PACKS } from "./pipeline/captions.js";
+import { TRANSLATE_MODES } from "./pipeline/translate.js";
 import { detectShots, shotsFromCuts } from "./pipeline/detect.js";
 import { ingest } from "./pipeline/ingest.js";
 import { readFileSync as rf } from "node:fs";
@@ -41,10 +42,12 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       const source = String(body.source ?? "").trim();
       if (!source) return ok(res, 400, { error: "source required (local path or URL)" });
+      // Caption translation mode; unknown values fall back to "none".
+      const translate = TRANSLATE_MODES.includes(body.translate) ? body.translate : "none";
       const jobId = randomUUID();
       const job = { id: jobId, status: "queued", stage: "", note: "", logs: [], created: Date.now() };
       jobs.set(jobId, job);
-      startRank(job, source, Number(body.top) || 6, body);
+      startRank(job, source, Number(body.top) || 6, { ...body, translate });
       return ok(res, 200, { jobId });
     }
 
@@ -58,7 +61,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (path === "/api/preview/sample" && req.method === "GET") {
-      const pack = url.searchParams.get("pack") ?? "beast-pop";
+      const pack = url.searchParams.get("pack") ?? "highlight";
       if (!PACKS[pack]) return ok(res, 400, { error: `unknown pack ${pack}` });
       const positionPct = numOrNull(url.searchParams.get("position"));
       const scalePct = numOrNull(url.searchParams.get("scale")) ?? 1;
@@ -148,7 +151,7 @@ const server = http.createServer(async (req, res) => {
       if (!job?.result) return ok(res, 404, { error: "unknown job or ranking not finished" });
       const clip = job.result.clips.find((c) => c.rank === rank);
       if (!clip) return ok(res, 404, { error: "unknown clip" });
-      const pack = url.searchParams.get("pack") ?? job.result.renderSettings?.pack ?? "beast-pop";
+      const pack = url.searchParams.get("pack") ?? job.result.renderSettings?.pack ?? "highlight";
       const positionPct = numOrNull(url.searchParams.get("position"));
       const scalePct = numOrNull(url.searchParams.get("scale")) ?? 1;
       const ratio = url.searchParams.get("ratio") ?? job.result.renderSettings?.ratio ?? "9:16";
@@ -172,8 +175,8 @@ const server = http.createServer(async (req, res) => {
       const job = jobs.get(String(body.jobId ?? ""));
       if (!job?.result) return ok(res, 400, { error: "unknown job or ranking not finished" });
       const indexes = (body.indexes ?? [1]).map(Number);
-      const pack = String(body.pack ?? "beast-pop");
-      const ratio = String(body.ratio ?? "9:16");
+      const pack = String(body.pack ?? "highlight");
+      // Client ratio is accepted but ignored — renders are always 9:16.
       const positionPct = numOrNull(body.positionPct);
       const scalePct = numOrNull(body.scalePct) ?? 1;
       const picks = job.result.clips.filter((c) => indexes.includes(c.rank));
@@ -184,11 +187,11 @@ const server = http.createServer(async (req, res) => {
           words: windowWords(job.workDir, clip),
           language: job.result.language,
         };
-        const { file, plan } = await renderClip({
+        const { file, plan, checks } = await renderClip({
           probe: job.probe,
           clip: full,
           workDir: job.workDir,
-          opts: { pack, ratio, captions: captionsEnabled(body), positionPct, scalePct, shots: job.shots },
+          opts: { pack, captions: captionsEnabled(body), positionPct, scalePct, shots: job.shots },
         });
         const base = file.split(/[\\/]/).pop();
         outputs.push({
@@ -197,6 +200,7 @@ const server = http.createServer(async (req, res) => {
           url: `/media/${job.result.workId}/${base}`,
           score: clip.score,
           mode: plan.mode,
+          checks: checks ?? null,
         });
       }
       return ok(res, 200, { outputs });
@@ -259,11 +263,11 @@ function startRank(job, source, top, body = {}) {
     workRoot: WORK_ROOT,
     top,
     render: {
-      pack: String(body.pack ?? "beast-pop"),
-      ratio: String(body.ratio ?? "9:16"),
+      pack: String(body.pack ?? "highlight"),
       positionPct: numOrNull(body.positionPct),
       scalePct: numOrNull(body.scalePct) ?? 1,
     },
+    translate: body.translate ?? "none",
     autoRender: body.autoRender !== false,
     onStage: (stage, note) => {
       job.stage = stage;
@@ -294,6 +298,7 @@ function windowWords(workDir, clip) {
   if (!existsSync(tPath)) return [];
   const doc = JSON.parse(rf(tPath, "utf8"));
   const offset = clip.finalStart ?? clip.start;
+  const end = clip.finalEnd ?? clip.end;
   const words = [];
   for (const seg of doc.transcription ?? []) {
     for (const tok of seg.tokens ?? []) {
@@ -301,8 +306,12 @@ function windowWords(workDir, clip) {
       if (!word || word.startsWith("[") || /^[_\-.,]+$/.test(word)) continue;
       const s = (tok.offsets?.from ?? 0) / 1000;
       const e = (tok.offsets?.to ?? 0) / 1000;
-      if (s >= clip.start - 0.2 && e <= clip.end + 0.2) {
-        words.push({ start: Math.max(0, s - offset), end: Math.max(0, e - offset), word });
+      // Final window ±0.25s; trimmed-out words are dropped, never clamped to 0.
+      if (s >= offset - 0.25 && e <= end + 0.25) {
+        const relEnd = e - offset;
+        const relStart = s - offset;
+        if (relEnd <= relStart || relEnd <= 0.01) continue;
+        words.push({ start: Math.max(0, relStart), end: relEnd, word });
       }
     }
   }

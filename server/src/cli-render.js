@@ -2,7 +2,7 @@
 /**
  * ShotForge M2 CLI: render ranked clips into vertical mp4s.
  *   node server/src/cli-render.js <videoPath> [--rank rankFile.json] [--index 1,2,3]
- *        [--pack bold-pop|karaoke|minimal] [--ratio 9:16|1:1|16:9] [--no-captions]
+ *        [--pack highlight|classic|karaoke|minimal] [--ratio 9:16|1:1|16:9] [--no-captions]
  *
  * Reads the rank file written by cli-rank.js (re-uses its .work dir for the
  * transcript words) and renders each selected clip with NVENC.
@@ -18,7 +18,7 @@ import { renderClip } from "./pipeline/render.js";
 
 const args = process.argv.slice(2);
 if (args.length < 1) {
-  console.log("usage: node cli-render.js <videoPath> [--rank FILE] [--index 1,2] [--pack bold-pop] [--ratio 9:16] [--no-captions]");
+  console.log("usage: node cli-render.js <videoPath> [--rank FILE] [--index 1,2] [--pack highlight] [--ratio 9:16] [--no-captions]");
   process.exit(1);
 }
 const source = resolve(args[0]);
@@ -26,7 +26,7 @@ const flag = (name, fallback) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : fallback;
 };
-const pack = flag("--pack", "bold-pop");
+const pack = flag("--pack", "highlight");
 const ratio = flag("--ratio", "9:16");
 const captions = !args.includes("--no-captions");
 const rankFile = flag("--rank", null);

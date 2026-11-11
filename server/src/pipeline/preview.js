@@ -14,7 +14,7 @@ export async function renderStylePreview({
   probe,
   clip,
   workDir,
-  pack = "beast-pop",
+  pack = "highlight",
   positionPct = null,
   scalePct = 1,
   ratio = "9:16",
@@ -103,7 +103,7 @@ function copyFonts(dir) {
  * synthetic frame, for the Typography step before any video is processed.
  */
 export async function renderSamplePreview({
-  pack = "beast-pop",
+  pack = "highlight",
   positionPct = null,
   scalePct = 1,
   width = 405,

@@ -36,6 +36,63 @@ export async function unloadModel(model) {
   }
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * One sequential JSON-schema chat call with a hard timeout and a slow retry —
+ * VRAM contention between pipeline phases makes transient Ollama failures
+ * routine, so callers get one bounded 30s-later retry instead of a crash.
+ * Carries think:false, `format` schema and keep_alive:0 like every call here.
+ *
+ * @param {object} p
+ * @param {string} p.model
+ * @param {object} p.schema          JSON schema passed as Ollama `format`
+ * @param {string} p.prompt
+ * @param {string[]} [p.images]      base64 JPEGs (no data: prefix)
+ * @param {object} [p.options]       extra Ollama options (temperature, num_predict…)
+ * @param {number} [p.timeoutMs]
+ * @param {number} [p.retries]       extra attempts after a failure (default 1)
+ * @param {(line:string)=>void} [p.log]
+ * @returns {Promise<object>} parsed JSON message content
+ */
+export async function chatJson({
+  model,
+  schema,
+  prompt,
+  images,
+  options = {},
+  timeoutMs = 180_000,
+  retries = 1,
+  log = () => {},
+}) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    if (attempt > 0) {
+      log(`ollama ${model} failed (${lastErr?.message ?? "unknown"}) — retrying in 30s`);
+      await sleep(30_000);
+    }
+    try {
+      const json = await request(
+        "/api/chat",
+        {
+          model,
+          stream: false,
+          think: false,
+          format: schema,
+          keep_alive: 0,
+          options: { temperature: 0.2, num_ctx: 8192, ...options },
+          messages: [{ role: "user", content: prompt, ...(images ? { images } : {}) }],
+        },
+        timeoutMs,
+      );
+      return JSON.parse(json.message?.content ?? "{}");
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
+}
+
 export const OLLAMA_RUBRIC = `You are a short-form video editor scoring candidate clips for TikTok/Reels/Shorts.
 A 10/10 clip: hooks in the first 2 seconds, has one clear idea or emotional beat, ends on a payoff, and works without context.
 Judge ONLY from the material given. Be strict: most clips are 40-70, outstanding ones 80+, weak ones under 35.`;

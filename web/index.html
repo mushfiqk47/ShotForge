@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ShotForge - Studio</title>
+    <meta name="color-scheme" content="light dark">
+    <title>ShotForge Studio</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23111111'/%3E%3Cpath fill='%23faf9f6' d='M14.5 4 10 13h3l-1.6 7L15.8 9.4h-3z'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500&family=JetBrains+Mono:wght@400&family=Source+Serif+Pro:ital,wght@0,300;1,300&display=swap" rel="stylesheet">
@@ -13,20 +15,33 @@
 
     <header class="app-header">
         <div class="brand-mark">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            <svg class="brand-logo" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect x="6" y="1.5" width="12" height="21" rx="2.75" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <path fill="currentColor" d="M13.65 5.2 L9.75 12.4 H12.45 L11.05 18.8 L14.35 10.9 H11.75 Z"/>
             </svg>
             ShotForge
         </div>
         <div class="header-actions">
             <div class="header-meta">Local processing · 100% private</div>
-            <button class="theme-toggle" id="theme-btn" type="button">Dark Mode</button>
+            <button class="theme-toggle" id="theme-btn" type="button" aria-label="Toggle theme">
+                <svg class="icon-moon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" fill="currentColor"/>
+                </svg>
+                <svg class="icon-sun" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
         </div>
     </header>
 
     <main class="studio-container">
 
         <nav class="stepper-nav" aria-label="Workflow">
+            <div class="action-bar">
+                <button class="btn btn-ghost" id="btn-back" type="button" style="display:none;">Back</button>
+                <button class="btn btn-primary" id="btn-next" type="button">Continue</button>
+            </div>
             <div class="step-tab active" id="tab-1"><span class="step-num">01</span> Source</div>
             <div class="step-tab" id="tab-2"><span class="step-num">02</span> Typography</div>
             <div class="step-tab" id="tab-3"><span class="step-num">03</span> Processing</div>
@@ -36,23 +51,14 @@
         <!-- STEP 1 -->
         <div class="step-content active" id="step-1">
             <div class="panel">
-                <h2>Source Material</h2>
-                <p class="panel-desc">Upload your raw footage or point at a local file. The engine transcribes it with whisper, finds the moments worth posting, reframes and renders — entirely on this machine.</p>
-
-                <div class="upload-surface" id="upload-surface" role="button" tabindex="0">
-                    <svg class="upload-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <div class="upload-surface" id="upload-surface" role="button" tabindex="0" aria-label="Upload a video file">
+                    <svg class="upload-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                         <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
                     </svg>
                     <div class="upload-title">Click to select, or drag a video anywhere on this page</div>
-                    <div class="upload-formats">MP4 · MOV · WEBM — uploaded locally, never sent anywhere</div>
+                    <div class="upload-formats">MP4 · MOV · WEBM. Uploaded locally, never sent anywhere.</div>
                 </div>
                 <input id="file-input" type="file" accept="video/*" hidden />
-
-                <div class="input-group path-group">
-                    <label for="source-input">Or a local path / YouTube URL</label>
-                    <input type="text" id="source-input"
-                           placeholder="C:\videos\podcast.mp4  —  or  https://youtube.com/watch?v=…" />
-                </div>
 
                 <div class="settings-row">
                     <div class="input-group">
@@ -60,28 +66,56 @@
                         <input type="number" id="top-n" value="6" min="1" max="20">
                     </div>
                     <div class="input-group">
-                        <label for="ratio">Canvas Ratio</label>
-                        <select id="ratio">
-                            <option value="9:16">9:16 (Vertical / Shorts)</option>
-                            <option value="16:9">16:9 (Horizontal / YT)</option>
-                            <option value="1:1">1:1 (Square)</option>
+                        <label for="caption-lang">Caption Language</label>
+                        <select id="caption-lang">
+                            <option value="none" selected>Original (no translation)</option>
+                            <option value="roman-urdu">Roman Urdu</option>
+                            <option value="urdu">Urdu</option>
+                            <option value="hindi">Hindi</option>
+                            <option value="english">English</option>
                         </select>
+                    </div>
+                    <div class="input-group">
+                        <span class="group-label" id="format-label">Output Format</span>
+                        <div class="format-readout" aria-labelledby="format-label">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <rect x="6" y="1.5" width="12" height="21" rx="2.75" fill="none" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                            <span>Vertical 9:16 · 1080×1920</span>
+                        </div>
                     </div>
                 </div>
 
-                <p class="form-error hidden" id="step1-error"></p>
+                <p class="form-error hidden" id="step1-error" role="alert"></p>
             </div>
         </div>
 
         <!-- STEP 2 -->
         <div class="step-content" id="step-2">
             <div class="panel">
-                <h2>Typography &amp; Layout</h2>
-                <p class="panel-desc">Select a caption treatment. The preview burns the real render pipeline onto a frame, so what you see here is what ffmpeg will draw.</p>
-
                 <div class="caption-workspace">
-                    <div class="video-canvas">
-                        <img id="preview-img" src="/api/preview/sample?pack=beast-pop&position=22&scale=1" alt="Caption preview">
+                    <div class="preview-row">
+                        <div class="video-canvas">
+                            <img id="preview-img" src="/api/preview/sample?pack=highlight&position=22&scale=1" alt="Caption preview">
+                        </div>
+
+                        <div class="slider-row">
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label for="caption-pos">Vertical Position</label>
+                                    <span class="slider-value" id="pos-val">22%</span>
+                                </div>
+                                <input type="range" id="caption-pos" min="5" max="60" value="22">
+                            </div>
+
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label for="caption-size">Scale</label>
+                                    <span class="slider-value" id="size-val">1.0x</span>
+                                </div>
+                                <input type="range" id="caption-size" min="60" max="160" step="5" value="100">
+                            </div>
+                        </div>
                     </div>
 
                     <div class="caption-controls">
@@ -90,22 +124,6 @@
                             <div class="template-grid" id="template-grid">
                                 <div class="template-loading">Loading presets…</div>
                             </div>
-                        </div>
-
-                        <div class="slider-group">
-                            <div class="slider-header">
-                                <label for="caption-pos">Vertical Position</label>
-                                <span class="slider-value" id="pos-val">22%</span>
-                            </div>
-                            <input type="range" id="caption-pos" min="5" max="60" value="22">
-                        </div>
-
-                        <div class="slider-group">
-                            <div class="slider-header">
-                                <label for="caption-size">Scale</label>
-                                <span class="slider-value" id="size-val">1.0x</span>
-                            </div>
-                            <input type="range" id="caption-size" min="60" max="160" step="5" value="100">
                         </div>
                     </div>
                 </div>
@@ -120,13 +138,17 @@
 
                 <div class="pipeline-header">
                     <span class="progress-status" id="progress-text">Initializing engine…</span>
+                    <span class="translate-note" id="translate-note" hidden></span>
                     <span class="progress-percent" id="progress-percent">0%</span>
                 </div>
-                <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+                <div class="progress-track" id="progress-track" role="progressbar"
+                     aria-label="Processing progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
 
                 <div class="stage-pills" id="stage-pills"></div>
-                <div class="log-window" id="terminal"><div>&gt; System ready.</div></div>
-                <p class="form-error hidden" id="step3-error"></p>
+                <div class="log-window" id="terminal" role="log" aria-label="Engine log"><div><span class="log-accent">&gt; </span>System ready.</div></div>
+                <p class="form-error hidden" id="step3-error" role="alert"></p>
             </div>
         </div>
 
@@ -134,14 +156,9 @@
         <div class="step-content" id="step-4">
             <div class="panel panel-flush">
                 <h2>Export</h2>
-                <p class="panel-desc">Clips are rendered and ranked. Every score carries its reason — open a tile to review before posting.</p>
+                <p class="panel-desc">Clips are rendered and ranked, each with upload-ready metadata. Every score carries its reason; open a tile to review before posting.</p>
                 <div class="output-grid" id="output-grid"></div>
             </div>
-        </div>
-
-        <div class="action-bar">
-            <button class="btn btn-ghost" id="btn-back" type="button" style="display:none;">Back</button>
-            <button class="btn btn-primary" id="btn-next" type="button">Continue</button>
         </div>
     </main>
 

@@ -1,31 +1,37 @@
 "use strict";
-/* ShotForge — editorial studio UI (vanilla JS, no build step).
+/* ShotForge studio UI (vanilla JS, no build step).
  *
  * Flow (4-step stepper):
- *   01 Source      → upload / local path / URL; target clips; ratio
- *   02 Typography  → 12 caption presets with real WYSIWYG sample previews
- *                    (/api/preview/sample), position + scale sliders
- *   03 Processing  → SSE pipeline progress, percent + log window
- *   04 Export      → rendered clip tiles: video + score + reason + camera note,
- *                    per-tile re-render with the chosen typography
+ *   01 Source      upload / local path / URL, target clips, caption language.
+ *                  Output is always vertical 9:16 (1080x1920), shown as a
+ *                  static readout, not a control.
+ *   02 Typography  11 caption presets with real WYSIWYG sample previews
+ *                  (/api/preview/sample), position + scale sliders
+ *   03 Processing  SSE pipeline progress, percent + log window; shows the
+ *                  active caption translation when one is selected
+ *   04 Export      rendered clip tiles: video + QC badge + social metadata
+ *                  (title, hashtags, description) + score + reason + camera
+ *                  note, per-tile re-render with the chosen typography
  *
- * Server contract is unchanged; all dynamic text goes through textContent.
+ * Server contract: /api/rank {source, top, translate, pack, positionPct,
+ * scalePct, autoRender}; /api/render {jobId, indexes, pack, positionPct,
+ * scalePct} (renders are always 9:16 server-side). All dynamic text goes
+ * through textContent / createElement.
  */
 
 const $ = (sel) => document.querySelector(sel);
 
 const PACK_NAMES = {
-  "beast-pop": "Beast Pop",
-  hormozi: "Hormozi",
-  "karaoke-pop": "Karaoke",
-  "tiktok-clean": "TikTok Clean",
-  "neon-gaming": "Neon Gaming",
-  "netflix-minimal": "Netflix Minimal",
+  classic: "Classic",
+  highlight: "Highlight",
+  "yellow-pop": "Yellow Pop",
+  karaoke: "Karaoke",
+  box: "Box",
+  minimal: "Minimal",
   typewriter: "Typewriter",
-  "emoji-pop": "Emoji Pop",
-  "gradient-pop": "Gradient Pop",
-  "pill-box": "Pill Box",
-  cinematic: "Cinematic",
+  glow: "Glow",
+  fancy: "Fancy",
+  hormozi: "Hormozi",
   "nastaliq-urdu": "Urdu Nastaliq",
 };
 
@@ -43,10 +49,10 @@ const STAGE_PERCENT = {
 const state = {
   step: 1,
   packs: [],
-  pack: "beast-pop",
+  pack: "highlight",
   positionPct: 22,
   scalePct: 1,
-  ratio: "9:16",
+  translate: "none",
   top: 6,
   source: "",
   jobId: null,
@@ -56,12 +62,26 @@ const state = {
 };
 
 /* ------------------------------------------------------------------ */
+/* Small DOM helper (keeps every dynamic string out of innerHTML)      */
+/* ------------------------------------------------------------------ */
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = text;
+  return node;
+}
+
+/* ------------------------------------------------------------------ */
 /* Theme                                                               */
 /* ------------------------------------------------------------------ */
 
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
-  $("#theme-btn").textContent = theme === "light" ? "Dark Mode" : "Light Mode";
+  $("#theme-btn").setAttribute(
+    "aria-label",
+    theme === "light" ? "Switch to dark mode" : "Switch to light mode",
+  );
   try { localStorage.setItem("shotforge-theme", theme); } catch {}
 }
 
@@ -80,13 +100,13 @@ applyTheme((() => {
 
 function goToStep(n) {
   state.step = n;
-  document.querySelectorAll(".step-content").forEach((el, i) => {
-    el.classList.toggle("active", i + 1 === n);
+  document.querySelectorAll(".step-content").forEach((elx, i) => {
+    elx.classList.toggle("active", i + 1 === n);
   });
-  document.querySelectorAll(".step-tab").forEach((el, i) => {
-    el.classList.remove("active", "completed");
-    if (i + 1 === n) el.classList.add("active");
-    if (i + 1 < n) el.classList.add("completed");
+  document.querySelectorAll(".step-tab").forEach((elx, i) => {
+    elx.classList.remove("active", "completed");
+    if (i + 1 === n) elx.classList.add("active");
+    if (i + 1 < n) elx.classList.add("completed");
   });
 
   const back = $("#btn-back");
@@ -119,14 +139,14 @@ $("#btn-next").addEventListener("click", () => {
   lastNavClick = now;
   if (state.running) return;
   if (state.step === 1) {
-    state.source = $("#source-input").value.trim();
+    state.source = (state.source ?? "").trim();
     if (!state.source) {
-      showStepError("step1-error", "Give me a local video path, a YouTube URL, or upload a file first.");
+      showStepError("step1-error", "Upload a video file first — click the surface or drop the file anywhere.");
       return;
     }
     hideError("step1-error");
     state.top = clampNum(Number($("#top-n").value), 1, 20, 6);
-    state.ratio = $("#ratio").value;
+    state.translate = $("#caption-lang").value;
     goToStep(2);
   } else if (state.step === 2) {
     startJob();
@@ -143,17 +163,20 @@ function resetProject() {
   state.result = null;
   state.running = false;
   state.jobDone = false;
-  $("#terminal").innerHTML = "<div>&gt; System ready.</div>";
-  $("#progress-fill").style.width = "0%";
-  $("#progress-percent").textContent = "0%";
-  $("#progress-text").textContent = "Initializing engine…";
+  const terminal = $("#terminal");
+  terminal.replaceChildren();
+  logLine("System ready.");
+  setProgress(0, "Initializing engine…");
+  const note = $("#translate-note");
+  note.hidden = true;
+  note.textContent = "";
   goToStep(1);
 }
 
 function showStepError(id, message) {
-  const el = document.getElementById(id);
-  el.textContent = message;
-  el.classList.remove("hidden");
+  const elx = document.getElementById(id);
+  elx.textContent = message;
+  elx.classList.remove("hidden");
 }
 function hideError(id) {
   document.getElementById(id).classList.add("hidden");
@@ -184,13 +207,14 @@ async function uploadAndUse(file) {
     });
     const data = await res.json();
     if (data.path) {
-      $("#source-input").value = data.path;
       state.source = data.path;
       uploadSurface.querySelector(".upload-title").textContent =
-        `Selected: ${file.name} — continue to Typography`;
+        `Selected: ${file.name}. Continue to Typography.`;
+    } else {
+      uploadSurface.querySelector(".upload-title").textContent = "Upload failed, try again";
     }
   } catch {
-    uploadSurface.querySelector(".upload-title").textContent = "Upload failed — try again";
+    uploadSurface.querySelector(".upload-title").textContent = "Upload failed, try again";
   }
 }
 
@@ -230,20 +254,21 @@ async function loadPacks() {
   } catch {
     state.packs = Object.keys(PACK_NAMES);
   }
-  grid.innerHTML = "";
+  grid.replaceChildren();
   for (const id of state.packs) {
-    const option = document.createElement("div");
-    option.className = "template-option" + (id === state.pack ? " selected" : "");
+    const option = el("div", "template-option" + (id === state.pack ? " selected" : ""));
     option.dataset.pack = id;
     option.setAttribute("role", "button");
     option.tabIndex = 0;
+    option.setAttribute("aria-pressed", String(id === state.pack));
 
     const img = document.createElement("img");
     img.alt = `${PACK_NAMES[id] ?? id} caption preview`;
     img.src = samplePreviewUrl(id);
-    const name = document.createElement("span");
-    name.className = "template-name";
-    name.textContent = PACK_NAMES[id] ?? id;
+    img.addEventListener("error", () => {
+      img.replaceWith(el("div", "template-preview-fallback", "no preview"));
+    });
+    const name = el("span", "template-name", PACK_NAMES[id] ?? id);
     option.append(img, name);
 
     option.addEventListener("click", () => selectPack(id));
@@ -256,8 +281,10 @@ async function loadPacks() {
 
 function selectPack(id) {
   state.pack = id;
-  document.querySelectorAll(".template-option").forEach((el) => {
-    el.classList.toggle("selected", el.dataset.pack === id);
+  document.querySelectorAll(".template-option").forEach((opt) => {
+    const selected = opt.dataset.pack === id;
+    opt.classList.toggle("selected", selected);
+    opt.setAttribute("aria-pressed", String(selected));
   });
   refreshBigPreview();
 }
@@ -309,7 +336,17 @@ function startJob() {
   state.jobDone = false;
   goToStep(3);
   buildStagePills();
-  $("#terminal").innerHTML = "";
+
+  const note = $("#translate-note");
+  if (state.translate === "none") {
+    note.hidden = true;
+    note.textContent = "";
+  } else {
+    note.textContent = `captions → ${state.translate}`;
+    note.hidden = false;
+  }
+
+  $("#terminal").replaceChildren();
   logLine("Submitting job to the engine…");
 
   fetch("/api/rank", {
@@ -318,8 +355,8 @@ function startJob() {
     body: JSON.stringify({
       source: state.source,
       top: state.top,
+      translate: state.translate,
       pack: state.pack,
-      ratio: state.ratio,
       positionPct: state.positionPct,
       scalePct: state.scalePct,
       autoRender: true,
@@ -340,12 +377,10 @@ function startJob() {
 
 function buildStagePills() {
   const bar = $("#stage-pills");
-  bar.innerHTML = "";
+  bar.replaceChildren();
   for (const stage of STAGES) {
-    const pill = document.createElement("span");
-    pill.className = "stage-pill";
+    const pill = el("span", "stage-pill", stage);
     pill.dataset.stage = stage;
-    pill.textContent = stage;
     bar.appendChild(pill);
   }
 }
@@ -359,6 +394,13 @@ function markStage(stage) {
   }
 }
 
+function setProgress(pct, statusText) {
+  $("#progress-fill").style.width = `${pct}%`;
+  $("#progress-percent").textContent = `${pct}%`;
+  $("#progress-track").setAttribute("aria-valuenow", String(pct));
+  if (statusText) $("#progress-text").textContent = statusText;
+}
+
 function listenProgress(jobId) {
   const es = new EventSource(`/api/progress/${jobId}`);
   es.onmessage = (event) => {
@@ -368,16 +410,14 @@ function listenProgress(jobId) {
     if (data.note) logLine(`${data.stage}: ${data.note}`);
 
     const percent = STAGE_PERCENT[data.stage] ?? 0;
-    $("#progress-fill").style.width = `${percent}%`;
-    $("#progress-percent").textContent = `${percent}%`;
-    $("#progress-text").textContent =
-      data.stage === "render" ? `Rendering clips (${data.note ?? ""})` : `${data.stage}…`;
+    setProgress(
+      percent,
+      data.stage === "render" ? `Rendering clips (${data.note ?? ""})` : `${data.stage}…`,
+    );
 
     if (data.status === "done") {
       es.close();
-      $("#progress-fill").style.width = "100%";
-      $("#progress-percent").textContent = "100%";
-      $("#progress-text").textContent = "Process complete.";
+      setProgress(100, "Process complete.");
       state.running = false;
       state.jobDone = true;
       goToStep(3);
@@ -385,7 +425,7 @@ function listenProgress(jobId) {
     if (data.status === "error") {
       es.close();
       state.running = false;
-      showStepError("step3-error", "The engine hit an error — check the log above and try again.");
+      showStepError("step3-error", "The engine hit an error. Check the log above and try again.");
     }
   };
 }
@@ -393,9 +433,7 @@ function listenProgress(jobId) {
 function logLine(text) {
   const terminal = $("#terminal");
   const line = document.createElement("div");
-  const arrow = document.createElement("span");
-  arrow.className = "log-accent";
-  arrow.textContent = "> ";
+  const arrow = el("span", "log-accent", "> ");
   line.appendChild(arrow);
   line.appendChild(document.createTextNode(text));
   terminal.appendChild(line);
@@ -407,94 +445,191 @@ function logLine(text) {
 /* ------------------------------------------------------------------ */
 
 async function buildExport() {
-  const res = await fetch(`/api/rank/${state.jobId}`);
-  const result = await res.json();
-  if (!result.clips) {
-    showStepError("step3-error", "Ranking result not available yet.");
+  const grid = $("#output-grid");
+  renderGridState(grid, "loading", "Loading rendered clips…");
+
+  let result;
+  try {
+    const res = await fetch(`/api/rank/${state.jobId}`);
+    result = await res.json();
+  } catch (err) {
+    renderGridState(grid, "error", `Could not load results: ${err.message}`, "Retry", buildExport);
     return;
   }
+  if (!result || result.error || !Array.isArray(result.clips)) {
+    renderGridState(grid, "error", result?.error ?? "Ranking result not available.", "Retry", buildExport);
+    return;
+  }
+  if (result.clips.length === 0) {
+    renderGridState(grid, "empty",
+      "The engine returned no clips for this source. Try different footage or raise the target clip count.");
+    return;
+  }
+
   state.result = result;
-  const grid = $("#output-grid");
-  grid.innerHTML = "";
-
+  grid.replaceChildren();
   for (const clip of result.clips) {
-    const card = document.createElement("div");
-    card.className = "output-card";
+    grid.appendChild(buildClipCard(clip));
+  }
+}
 
-    const thumb = document.createElement("div");
-    thumb.className = "output-thumb";
-    if (clip.video) {
-      const video = document.createElement("video");
-      video.src = mediaUrl(clip.video);
-      video.controls = true;
-      video.preload = "metadata";
-      thumb.appendChild(video);
-    } else {
-      const placeholder = document.createElement("div");
-      placeholder.className = "template-loading";
-      placeholder.textContent = "Not rendered yet — press Re-render";
-      thumb.appendChild(placeholder);
+function renderGridState(grid, kind, message, retryLabel, onRetry) {
+  grid.replaceChildren();
+  const box = el("div", "output-state" + (kind === "error" ? " output-state-error" : ""));
+  box.appendChild(el("p", "output-state-text", message));
+  if (onRetry) {
+    const retry = el("button", "btn-download", retryLabel);
+    retry.type = "button";
+    retry.addEventListener("click", onRetry);
+    box.appendChild(retry);
+  }
+  grid.appendChild(box);
+}
+
+function buildClipCard(clip) {
+  const card = el("div", "output-card");
+
+  /* Media column: video (poster while it loads), poster-only, or placeholder. */
+  const media = el("div", "output-media");
+  if (clip.video) {
+    const video = document.createElement("video");
+    video.src = mediaUrl(clip.video);
+    video.controls = true;
+    video.preload = "metadata";
+    if (clip.thumb) video.poster = clip.thumb;
+    media.appendChild(video);
+  } else if (clip.thumb) {
+    const poster = document.createElement("img");
+    poster.src = clip.thumb;
+    poster.alt = `Clip ${clip.rank} poster`;
+    media.appendChild(poster);
+  } else {
+    media.appendChild(el("div", "output-placeholder",
+      "Not rendered yet. Press Re-render to render it with the current typography."));
+  }
+  media.appendChild(el("div", "score-flag", `${clip.score ?? 0} / 100`));
+
+  /* Body column. */
+  const body = el("div", "output-body");
+  const meta = clip.meta ?? null;
+
+  const topline = el("div", "output-topline");
+  topline.appendChild(el("span", "clip-id", `Clip_${String(clip.rank).padStart(2, "0")}.mp4`));
+  const qc = qcBadge(clip.checks);
+  if (qc) topline.appendChild(qc);
+  body.appendChild(topline);
+
+  /* Title: social metadata when present, hook as the fallback. */
+  const titleText = (meta && meta.title) || clip.hook || `(visual moment, ${clip.kind})`;
+  body.appendChild(el("h3", "clip-title", titleText));
+
+  /* Keep the spoken hook visible when the title came from metadata. */
+  if (meta && meta.title && clip.hook) {
+    body.appendChild(el("div", "output-hook", `Hook · ${clip.hook}`));
+  }
+
+  if (clip.reason) body.appendChild(el("p", "output-reason", clip.reason));
+
+  if (meta && Array.isArray(meta.hashtags) && meta.hashtags.length) {
+    body.appendChild(buildHashtagRow(meta.hashtags));
+  }
+  if (meta && meta.description) {
+    body.appendChild(el("p", "output-desc", meta.description));
+  }
+
+  if (clip.cameraNote) {
+    body.appendChild(el("div", "output-camera", `CAMERA · ${clip.cameraNote}`));
+  }
+
+  body.appendChild(el("div", "output-judges", judgesLine(clip)));
+
+  const actions = el("div", "output-actions");
+  if (clip.video) {
+    const save = document.createElement("a");
+    save.className = "btn-download";
+    save.href = mediaUrl(clip.video);
+    save.download = `Clip_${String(clip.rank).padStart(2, "0")}.mp4`;
+    save.textContent = "Save";
+    actions.appendChild(save);
+  }
+  const rerender = el("button", "btn-download", "Re-render");
+  rerender.type = "button";
+  rerender.addEventListener("click", () => reRenderClip(clip, card));
+  actions.appendChild(rerender);
+  body.appendChild(actions);
+
+  card.append(media, body);
+  return card;
+}
+
+function buildHashtagRow(hashtags) {
+  const row = el("div", "hashtags-row");
+  for (const tag of hashtags) {
+    row.appendChild(el("span", "tag-chip", tag));
+  }
+  const copy = el("button", "tag-copy", "Copy all");
+  copy.type = "button";
+  copy.setAttribute("aria-live", "polite");
+  copy.addEventListener("click", () => copyText(hashtags.join(" "), copy));
+  row.appendChild(copy);
+  return row;
+}
+
+let copyResetTimer = null;
+async function copyText(text, button) {
+  const flash = (msg, copied) => {
+    button.textContent = msg;
+    button.classList.toggle("copied", copied);
+    clearTimeout(copyResetTimer);
+    copyResetTimer = setTimeout(() => {
+      button.textContent = "Copy all";
+      button.classList.remove("copied");
+    }, 1500);
+  };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      flash("Copied", true);
+      return;
     }
-    const scoreFlag = document.createElement("div");
-    scoreFlag.className = "score-flag";
-    scoreFlag.textContent = `${clip.score} / 100`;
-    thumb.appendChild(scoreFlag);
+  } catch { /* fall through to the legacy path */ }
+  let area = null;
+  try {
+    area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    flash(ok ? "Copied" : "Copy failed", ok);
+  } catch {
+    flash("Copy failed", false);
+  } finally {
+    if (area) area.remove();
+  }
+}
 
-    const body = document.createElement("div");
-    body.className = "output-body";
+function qcBadge(checks) {
+  if (!checks) return null; // QC lands progressively; no checks means no badge
+  const pass = checks.pass === true;
+  const badge = el("span", "qc-badge" + (pass ? "" : " qc-fail"), pass ? "QC PASS" : "QC FAIL");
+  if (!pass && Array.isArray(checks.problems) && checks.problems.length) {
+    badge.title = checks.problems.join(" · ");
+  }
+  return badge;
+}
 
-    const hook = document.createElement("div");
-    hook.className = "output-hook";
-    hook.textContent = clip.hook || `(visual moment, ${clip.kind})`;
-    body.appendChild(hook);
-
-    const reason = document.createElement("div");
-    reason.className = "output-reason";
-    reason.textContent = clip.reason;
-    body.appendChild(reason);
-
-    if (clip.cameraNote) {
-      const camera = document.createElement("div");
-      camera.className = "output-camera";
-      camera.textContent = `CAMERA — ${clip.cameraNote}`;
-      body.appendChild(camera);
-    }
-
-    const judges = document.createElement("div");
-    judges.className = "output-judges";
-    judges.textContent = `#${clip.rank} · ${fmt(clip.start)}→${fmt(clip.end)} · ${clip.durationSec.toFixed(0)}s · ${clip.kind} · h${clip.heuristic} llm${clip.llm ?? "-"} vis${clip.vision ?? "-"}`;
-    body.appendChild(judges);
-
-    const meta = document.createElement("div");
-    meta.className = "output-meta";
-
-    const id = document.createElement("span");
-    id.className = "clip-id";
-    id.textContent = `Clip_${String(clip.rank).padStart(2, "0")}.mp4`;
-    meta.appendChild(id);
-
-    const actions = document.createElement("div");
-    actions.className = "output-actions";
-
-    if (clip.video) {
-      const save = document.createElement("a");
-      save.className = "btn-download";
-      save.href = mediaUrl(clip.video);
-      save.download = `Clip_${String(clip.rank).padStart(2, "0")}.mp4`;
-      save.textContent = "Save";
-      actions.appendChild(save);
-    }
-
-    const rerender = document.createElement("button");
-    rerender.className = "btn-download";
-    rerender.type = "button";
-    rerender.textContent = "Re-render";
-    rerender.addEventListener("click", () => reRenderClip(clip, card));
-    actions.appendChild(rerender);
-
-    meta.appendChild(actions);
-    card.append(thumb, body, meta);
-    grid.appendChild(card);
+function updateQcBadge(card, checks) {
+  const topline = card.querySelector(".output-topline");
+  if (!topline) return;
+  const old = topline.querySelector(".qc-badge");
+  const fresh = qcBadge(checks);
+  if (fresh) {
+    if (old) old.replaceWith(fresh); else topline.appendChild(fresh);
+  } else if (old) {
+    old.remove();
   }
 }
 
@@ -511,7 +646,6 @@ async function reRenderClip(clip, card) {
         jobId: state.jobId,
         indexes: [clip.rank],
         pack: state.pack,
-        ratio: state.ratio,
         positionPct: state.positionPct,
         scalePct: state.scalePct,
       }),
@@ -524,16 +658,26 @@ async function reRenderClip(clip, card) {
       if (video) {
         video.src = `${out.url || mediaUrl(out.file)}?v=${Date.now()}`;
         video.load();
+        updateQcBadge(card, out.checks);
+        button.textContent = "Re-render";
       } else {
-        await buildExport();
+        await buildExport(); // full rebuild picks up the newly rendered file
+        return;
       }
     }
-    button.textContent = "Re-render";
   } catch (err) {
-    button.textContent = "Re-render";
+    button.textContent = "Failed";
+    setTimeout(() => { button.textContent = "Re-render"; }, 2000);
     logLine(`re-render failed: ${err.message}`);
   }
   button.disabled = false;
+}
+
+function judgesLine(clip) {
+  const llm = clip.llm ?? "-";
+  const vis = clip.vision ?? "-";
+  const secs = Math.round(clip.durationSec ?? 0);
+  return `#${clip.rank} · ${fmt(clip.start)}→${fmt(clip.end)} · ${secs}s · ${clip.kind} · h${clip.heuristic} llm${llm} vis${vis}`;
 }
 
 function mediaUrl(serverPath) {

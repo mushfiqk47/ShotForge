@@ -6,6 +6,9 @@ uploads/
 # Preview cache (generated)
 assets/.preview-cache/
 
+# Graphify knowledge graph (generated)
+graphify-out/
+
 # OS / editor noise
 .DS_Store
 Thumbs.db

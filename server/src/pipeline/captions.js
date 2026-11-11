@@ -1,5 +1,5 @@
 /**
- * Word-level captions as ASS (libass burn-in) — 12 style packs.
+ * Word-level captions as ASS (libass burn-in) — 11 CapCut-style presets.
  *
  * Karaoke mechanics (libass \k): text is shown in SecondaryColour before its
  * timestamp and fills to PrimaryColour as it is spoken. So per pack:
@@ -12,65 +12,69 @@
  */
 
 export const PACKS = {
-  "beast-pop": {
-    font: "Anton", size: 96, maxWords: 2, uppercase: true, karaoke: true,
+  // Clean white bold sans, black outline — no karaoke.
+  classic: {
+    font: "Inter", size: 60, maxWords: 6, uppercase: false, karaoke: false,
+    fill: "&H00FFFFFF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 4,
+    shadow: 1, box: false, align: 2, positionPct: 20,
+  },
+  // CapCut signature: white bold caps, the SPOKEN word fills yellow.
+  highlight: {
+    font: "Anton", size: 92, maxWords: 3, uppercase: true, karaoke: true,
     fill: "&H0000D7FF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 8,
     shadow: 2, box: false, align: 2, positionPct: 22,
   },
-  hormozi: {
-    font: "Montserrat", size: 80, maxWords: 3, uppercase: true, karaoke: true,
-    fill: "&H0000D7FF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 5,
-    shadow: 1, box: false, align: 2, positionPct: 24,
+  // The viral "Most Readable": all-yellow bold caps, spoken word pops white.
+  "yellow-pop": {
+    font: "Anton", size: 88, maxWords: 3, uppercase: true, karaoke: true,
+    fill: "&H00FFFFFF", base: "&H0000D7FF", outline: "&H00000000", outlineWidth: 8,
+    shadow: 2, box: false, align: 2, positionPct: 22,
   },
-  "karaoke-pop": {
-    font: "Inter", size: 64, maxWords: 6, uppercase: false, karaoke: true,
-    fill: "&H0000FFC8", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 5,
+  // Classic two-colour karaoke: unspoken white, spoken lime, more words per line.
+  karaoke: {
+    font: "Inter", size: 56, maxWords: 6, uppercase: false, karaoke: true,
+    fill: "&H0000FFC8", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 4,
     shadow: 1, box: false, align: 2, positionPct: 20,
   },
-  "tiktok-clean": {
-    font: "Inter", size: 48, maxWords: 7, uppercase: false, karaoke: false,
-    fill: "&H00FFFFFF", base: "&H00FFFFFF", outline: "&H90121A20", outlineWidth: 10,
-    shadow: 0, box: true, align: 2, positionPct: 16,
+  // White text on a solid black box — no karaoke.
+  box: {
+    font: "Inter", size: 52, maxWords: 5, uppercase: false, karaoke: false,
+    fill: "&H00FFFFFF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 12,
+    shadow: 0, box: true, align: 2, positionPct: 18,
   },
-  "neon-gaming": {
-    font: "Oswald", size: 74, maxWords: 4, uppercase: true, karaoke: true,
-    fill: "&H0050FF50", base: "&H00FFFFFF", outline: "&H00FF5096", outlineWidth: 4,
-    shadow: 3, box: false, align: 2, positionPct: 26, blur: 4,
-  },
-  "netflix-minimal": {
+  // Small clean white text, subtle shadow, lower third.
+  minimal: {
     font: "Inter", size: 44, maxWords: 8, uppercase: false, karaoke: false,
-    fill: "&H00FFFFFF", base: "&H00FFFFFF", outline: "&HA0141414", outlineWidth: 9,
-    shadow: 0, box: true, align: 2, positionPct: 14,
+    fill: "&H00FFFFFF", base: "&H00FFFFFF", outline: "&HA0141414", outlineWidth: 3,
+    shadow: 2, box: false, align: 2, positionPct: 16,
   },
+  // Words appear one at a time and stay.
   typewriter: {
     font: "JetBrainsMono", size: 52, maxWords: 6, uppercase: false, karaoke: false,
     typewriter: true,
     fill: "&H0000FFC8", base: "&H00FFFFFF", outline: "&H00141820", outlineWidth: 12,
     shadow: 0, box: true, align: 2, positionPct: 18,
   },
-  "emoji-pop": {
-    font: "Montserrat", size: 76, maxWords: 3, uppercase: true, karaoke: true,
-    emoji: true,
-    fill: "&H0000D7FF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 6,
-    shadow: 1, box: false, align: 2, positionPct: 24,
+  // White karaoke text with a soft blur glow and a neon accent outline.
+  glow: {
+    font: "Oswald", size: 64, maxWords: 4, uppercase: true, karaoke: true,
+    fill: "&H0000FFC8", base: "&H00FFFFFF", outline: "&H00FF5096", outlineWidth: 4,
+    shadow: 3, box: false, align: 2, positionPct: 24, blur: 4,
   },
-  "gradient-pop": {
-    font: "Montserrat", size: 78, maxWords: 3, uppercase: true, karaoke: true,
-    gradient: ["&H0000D7FF", "&H0064FF64", "&H00E09EFF"], // yellow → green → pink cycle
-    fill: "&H0000D7FF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 6,
-    shadow: 1, box: false, align: 2, positionPct: 24,
-  },
-  "pill-box": {
-    font: "Inter", size: 60, maxWords: 4, uppercase: false, karaoke: true,
-    fill: "&H0000D7FF", base: "&H00FFFFFF", outline: "&H00141414", outlineWidth: 12,
-    shadow: 2, box: true, align: 2, positionPct: 22,
-  },
-  cinematic: {
+  // Italic serif, soft shadow, elegant.
+  fancy: {
     font: "Playfair Display", size: 56, maxWords: 7, uppercase: false, karaoke: false,
     italic: true,
     fill: "&H00BCE8FA", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 3,
-    shadow: 3, box: false, align: 2, positionPct: 16,
+    shadow: 3, box: false, align: 2, positionPct: 20,
   },
+  // Maximalist yellow-highlight variant.
+  hormozi: {
+    font: "Montserrat", size: 80, maxWords: 3, uppercase: true, karaoke: true,
+    fill: "&H0000D7FF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 5,
+    shadow: 1, box: false, align: 2, positionPct: 24,
+  },
+  // Urdu Nastaliq — essential for Urdu content.
   "nastaliq-urdu": {
     font: "Noto Nastaliq Urdu", size: 64, maxWords: 4, uppercase: false, karaoke: true,
     rtl: true,
@@ -97,8 +101,8 @@ const EMOJI_MAP = [
 export function packForLanguage(language, requested) {
   if (requested && PACKS[requested]) return requested;
   if (language === "ur") return "nastaliq-urdu";
-  if (language === "hi") return "karaoke-pop";
-  return "bold-pop" in PACKS ? "bold-pop" : "beast-pop";
+  if (language === "hi") return "karaoke";
+  return "highlight";
 }
 
 /**
@@ -109,14 +113,14 @@ export function packForLanguage(language, requested) {
  */
 export function buildAss(words, opts = {}) {
   const {
-    pack = "beast-pop",
+    pack = "highlight",
     language = "en",
     width = 1080,
     height = 1920,
     positionPct = null,
     scalePct = 1,
   } = opts;
-  const style = PACKS[pack] ?? PACKS["beast-pop"];
+  const style = PACKS[pack] ?? PACKS["highlight"];
   const isRtl = style.rtl || RTL_LANGS.has(language);
   const fontFamily = isRtl && language === "ur" ? "Noto Nastaliq Urdu" : style.font;
   const fontSize = Math.round(style.size * scalePct);
@@ -140,20 +144,35 @@ export function buildAss(words, opts = {}) {
   ];
 
   let events;
-  if (style.typewriter) events = typewriterEvents(words, style, isRtl);
-  else events = lineEvents(words, style, isRtl);
+  const safeWords = guardWords(words);
+  if (style.typewriter) events = typewriterEvents(safeWords, style, isRtl);
+  else events = lineEvents(safeWords, style, isRtl);
   return [...header, ...events].join("\n");
 }
 
+/**
+ * Defense-in-depth for rebased word lists: words clipped to a trim window can
+ * arrive with end <= 0.02 (they fell before the trim point) — those must be
+ * dropped, never clamped to 0, which would pile trimmed-out words at t=0 and
+ * desync captions. Words straddling the clip start just get start clamped.
+ */
+function guardWords(words) {
+  return (words ?? [])
+    .filter((w) => w && Number.isFinite(w.end) && w.end > 0.02)
+    .map((w) => ({
+      ...w,
+      start: Math.max(0, w.start ?? 0),
+      end: Math.max(Math.max(0, w.start ?? 0), w.end),
+    }));
+}
+
 function lineEvents(words, style, isRtl) {
-  const lines = groupLines(words, style.maxWords, style.rtl || isRtl);
-  return lines.map((line) => {
-    const start = line[0].start;
-    const end = line[line.length - 1].end;
+  const lines = withLinger(groupLines(words, style.maxWords, style.rtl || isRtl));
+  return lines.map(({ words: line, start, end }) => {
     const body = style.karaoke
       ? line
           .map((w, i) => {
-            const durCs = Math.max(6, Math.round((w.end - w.start) * 100));
+            const durCs = Math.max(12, Math.round((w.end - w.start) * 100));
             const word = decorate(w.word, style, i);
             const prefix = style.gradient
               ? `{\\1c${style.gradient[i % style.gradient.length]}}`
@@ -173,9 +192,8 @@ function typewriterEvents(words, style, isRtl) {
   // Each word appears when spoken and stays: one Dialogue per word,
   // spanning from that word's start to the end of its line.
   const events = [];
-  const lines = groupLines(words, style.maxWords, isRtl);
-  for (const line of lines) {
-    const lineEnd = line[line.length - 1].end;
+  const lines = withLinger(groupLines(words, style.maxWords, isRtl));
+  for (const { words: line, end: lineEnd } of lines) {
     line.forEach((w, i) => {
       const text = line.slice(0, i + 1).map((x) => x.word).join(" ");
       events.push(
@@ -184,6 +202,25 @@ function typewriterEvents(words, style, isRtl) {
     });
   }
   return events;
+}
+
+/**
+ * Anti-flicker: a spoken line lingers briefly past its last word instead of
+ * vanishing between words/lines — but never into the next line's start, so
+ * events never overlap.
+ */
+function withLinger(lines) {
+  return lines.map((line, i) => {
+    const lastEnd = line[line.length - 1].end;
+    const nextStart = i + 1 < lines.length ? lines[i + 1][0].start : Infinity;
+    const cap = nextStart - 0.05;
+    const end = Math.max(
+      Math.min(line[0].start + 0.12, cap), // minimum visible sliver when the gap allows
+      Math.min(cap, lastEnd + 1.2),        // anti-flicker linger
+      line[0].start,                       // never before the line's own start
+    );
+    return { words: line, start: line[0].start, end };
+  });
 }
 
 function decorate(word, style, index) {
