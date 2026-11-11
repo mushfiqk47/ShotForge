@@ -1,0 +1,16 @@
+{
+  "name": "shotforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ShotForge — local-first OpusClip alternative: perfect shots from any video, powered by whisper.cpp + Ollama on your own GPU",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "rank": "node server/src/cli-rank.js",
+    "render": "node server/src/cli-render.js",
+    "start": "node server/src/index.js",
+    "test": "node --test server/test/"
+  }
+}

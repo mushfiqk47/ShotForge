@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShotForge - Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500&family=JetBrains+Mono:wght@400&family=Source+Serif+Pro:ital,wght@0,300;1,300&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+    <header class="app-header">
+        <div class="brand-mark">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+            ShotForge
+        </div>
+        <div class="header-actions">
+            <div class="header-meta">Local processing · 100% private</div>
+            <button class="theme-toggle" id="theme-btn" type="button">Dark Mode</button>
+        </div>
+    </header>
+
+    <main class="studio-container">
+
+        <nav class="stepper-nav" aria-label="Workflow">
+            <div class="step-tab active" id="tab-1"><span class="step-num">01</span> Source</div>
+            <div class="step-tab" id="tab-2"><span class="step-num">02</span> Typography</div>
+            <div class="step-tab" id="tab-3"><span class="step-num">03</span> Processing</div>
+            <div class="step-tab" id="tab-4"><span class="step-num">04</span> Export</div>
+        </nav>
+
+        <!-- STEP 1 -->
+        <div class="step-content active" id="step-1">
+            <div class="panel">
+                <h2>Source Material</h2>
+                <p class="panel-desc">Upload your raw footage or point at a local file. The engine transcribes it with whisper, finds the moments worth posting, reframes and renders — entirely on this machine.</p>
+
+                <div class="upload-surface" id="upload-surface" role="button" tabindex="0">
+                    <svg class="upload-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                    </svg>
+                    <div class="upload-title">Click to select, or drag a video anywhere on this page</div>
+                    <div class="upload-formats">MP4 · MOV · WEBM — uploaded locally, never sent anywhere</div>
+                </div>
+                <input id="file-input" type="file" accept="video/*" hidden />
+
+                <div class="input-group path-group">
+                    <label for="source-input">Or a local path / YouTube URL</label>
+                    <input type="text" id="source-input"
+                           placeholder="C:\videos\podcast.mp4  —  or  https://youtube.com/watch?v=…" />
+                </div>
+
+                <div class="settings-row">
+                    <div class="input-group">
+                        <label for="top-n">Target Clips</label>
+                        <input type="number" id="top-n" value="6" min="1" max="20">
+                    </div>
+                    <div class="input-group">
+                        <label for="ratio">Canvas Ratio</label>
+                        <select id="ratio">
+                            <option value="9:16">9:16 (Vertical / Shorts)</option>
+                            <option value="16:9">16:9 (Horizontal / YT)</option>
+                            <option value="1:1">1:1 (Square)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <p class="form-error hidden" id="step1-error"></p>
+            </div>
+        </div>
+
+        <!-- STEP 2 -->
+        <div class="step-content" id="step-2">
+            <div class="panel">
+                <h2>Typography &amp; Layout</h2>
+                <p class="panel-desc">Select a caption treatment. The preview burns the real render pipeline onto a frame, so what you see here is what ffmpeg will draw.</p>
+
+                <div class="caption-workspace">
+                    <div class="video-canvas">
+                        <img id="preview-img" src="/api/preview/sample?pack=beast-pop&position=22&scale=1" alt="Caption preview">
+                    </div>
+
+                    <div class="caption-controls">
+                        <div class="input-group">
+                            <label>Template Preset</label>
+                            <div class="template-grid" id="template-grid">
+                                <div class="template-loading">Loading presets…</div>
+                            </div>
+                        </div>
+
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label for="caption-pos">Vertical Position</label>
+                                <span class="slider-value" id="pos-val">22%</span>
+                            </div>
+                            <input type="range" id="caption-pos" min="5" max="60" value="22">
+                        </div>
+
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label for="caption-size">Scale</label>
+                                <span class="slider-value" id="size-val">1.0x</span>
+                            </div>
+                            <input type="range" id="caption-size" min="60" max="160" step="5" value="100">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 3 -->
+        <div class="step-content" id="step-3">
+            <div class="panel">
+                <h2>Engine Processing</h2>
+                <p class="panel-desc">Whisper transcription, highlight ranking and frame analysis are running locally on the GPU.</p>
+
+                <div class="pipeline-header">
+                    <span class="progress-status" id="progress-text">Initializing engine…</span>
+                    <span class="progress-percent" id="progress-percent">0%</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+                <div class="stage-pills" id="stage-pills"></div>
+                <div class="log-window" id="terminal"><div>&gt; System ready.</div></div>
+                <p class="form-error hidden" id="step3-error"></p>
+            </div>
+        </div>
+
+        <!-- STEP 4 -->
+        <div class="step-content" id="step-4">
+            <div class="panel panel-flush">
+                <h2>Export</h2>
+                <p class="panel-desc">Clips are rendered and ranked. Every score carries its reason — open a tile to review before posting.</p>
+                <div class="output-grid" id="output-grid"></div>
+            </div>
+        </div>
+
+        <div class="action-bar">
+            <button class="btn btn-ghost" id="btn-back" type="button" style="display:none;">Back</button>
+            <button class="btn btn-primary" id="btn-next" type="button">Continue</button>
+        </div>
+    </main>
+
+    <div id="drop-overlay" class="drop-overlay hidden"><div>Drop the video to start</div></div>
+    <script src="/app.js"></script>
+</body>
+</html>

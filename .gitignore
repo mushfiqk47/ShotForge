@@ -1,0 +1,12 @@
+# Runtime artifacts (videos, transcripts, work dirs — never commit media)
+.work/
+downloads/
+uploads/
+
+# Preview cache (generated)
+assets/.preview-cache/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log
