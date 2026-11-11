@@ -5,6 +5,7 @@
 
 /* Theme Variables */
 :root, [data-theme="light"] {
+    color-scheme: light;
     --color-electric-violet: #0007cb;
     --color-pure-white: #ffffff;
     --color-canvas-cream: #faf9f6;
@@ -15,7 +16,7 @@
     --color-carbon: #000000;
     --color-iron: #414141;
     --color-graphite: #585858;
-    --color-smoke: #6f6f6f;   /* AA on cream/white at 11-12px mono */
+    --color-smoke: #666666;   /* AA (>=4.5:1) on cream, white and linen at 11-13px */
     --color-ash: #a0a0a0;
     --color-silver: #b8b8b8;
     --color-danger: #8a2b2b;
@@ -23,9 +24,11 @@
     --bg-canvas: var(--color-canvas-cream);
     --bg-surface: var(--color-pure-white);
     --bg-alt: var(--color-linen);
+    --scrollbar-thumb-hover: var(--color-silver);
 }
 
 [data-theme="dark"] {
+    color-scheme: dark;
     --color-electric-violet: #7c84ff;
     --color-pure-white: #262422;
     --color-canvas-cream: #1a1918;
@@ -36,7 +39,7 @@
     --color-carbon: #f0ede9;
     --color-iron: #b5b0a8;
     --color-graphite: #94908a; /* AA on dark surface at label sizes */
-    --color-smoke: #8a8782;    /* AA on dark canvas at label sizes */
+    --color-smoke: #8a8782;    /* AA on dark canvas and linen at label sizes */
     --color-ash: #4a4845;
     --color-silver: #3a3835;
     --color-danger: #e08a8a;
@@ -44,6 +47,7 @@
     --bg-canvas: var(--color-canvas-cream);
     --bg-surface: var(--color-pure-white);
     --bg-alt: var(--color-linen);
+    --scrollbar-thumb-hover: var(--color-ash);
 }
 
 :root {
@@ -63,6 +67,58 @@
 :focus-visible {
     outline: 2px solid var(--color-electric-violet);
     outline-offset: 2px;
+}
+
+/* Browser surfaces carry the design too: selection, caret, scrollbars,
+   underline offset. All themed from the palette, both directions. */
+::selection {
+    background-color: var(--color-electric-violet);
+    color: var(--bg-canvas);
+}
+
+input, select {
+    caret-color: var(--color-electric-violet);
+}
+
+:root {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-stone) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--color-stone);
+    border-radius: 8px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+a {
+    text-underline-offset: 0.18em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }
 
 body {
@@ -116,7 +172,7 @@ body {
 .header-meta {
     font-family: var(--font-mono);
     font-size: 12px;
-    letter-spacing: 1.2px;
+    letter-spacing: 0.1em;
     color: var(--color-smoke);
     text-transform: uppercase;
 }
@@ -125,7 +181,7 @@ body {
     background: transparent;
     color: var(--color-ink);
     border: 1px solid var(--color-hairline);
-    padding: 12px;
+    padding: 13px; /* 13px + 18px icon = 44px touch target */
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: border-color 0.2s ease, color 0.2s ease;
@@ -159,10 +215,11 @@ body {
     gap: 48px;
 }
 
-/* Editorial Stepper */
+/* Editorial Stepper. Bottom-aligned so the active tab underline always
+   sits on the nav's hairline, whatever height the action buttons add. */
 .stepper-nav {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 32px;
     border-bottom: 1px solid var(--color-hairline);
     flex-wrap: wrap;
@@ -182,7 +239,7 @@ body {
 .step-num {
     font-family: var(--font-mono);
     font-size: 12px;
-    letter-spacing: 1.2px;
+    letter-spacing: 0.1em;
 }
 
 .step-tab.active {
@@ -225,27 +282,20 @@ body {
     display: block;
 }
 
+/* app.js moves focus to the panel on step change: no ring for that
+   programmatic focus, but keep the keyboard focus ring when it applies. */
+.step-content:focus {
+    outline: none;
+}
+
+.step-content:focus-visible {
+    outline: 2px solid var(--color-electric-violet);
+    outline-offset: 2px;
+}
+
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
-}
-
-h2 {
-    font-size: 32px;
-    font-weight: 300;
-    letter-spacing: -0.64px;
-    color: var(--color-ink);
-    margin-bottom: 8px;
-}
-
-.panel-desc {
-    font-family: var(--font-serif);
-    font-size: 16px;
-    font-weight: 300;
-    color: var(--color-iron);
-    margin-bottom: 32px;
-    max-width: 65ch;
-    line-height: 1.4;
 }
 
 /* --- Step 1: Upload & Settings --- */
@@ -286,25 +336,9 @@ h2 {
 .upload-formats {
     font-family: var(--font-mono);
     font-size: 12px;
-    letter-spacing: 1.2px;
+    letter-spacing: 0.1em;
     color: var(--color-smoke);
 }
-
-.path-group { margin-bottom: 32px; }
-
-#source-input {
-    background-color: var(--bg-surface);
-    color: var(--color-ink);
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-md);
-    padding: 14px 16px;
-    font-family: var(--font-sans);
-    font-size: 14px;
-    width: 100%;
-    transition: border-color 0.2s;
-}
-
-#source-input:focus { border-color: var(--color-ink); }
 
 .settings-row {
     display: grid;
@@ -322,7 +356,7 @@ label,
 .group-label {
     font-family: var(--font-mono);
     font-size: 12px;
-    letter-spacing: 1.2px;
+    letter-spacing: 0.1em;
     color: var(--color-graphite);
     text-transform: uppercase;
 }
@@ -335,7 +369,8 @@ input[type="number"], select, input[type="text"] {
     padding: 14px 16px;
     font-family: var(--font-sans);
     font-size: 14px;
-    transition: border-color 0.2s, background-color 0.3s;
+    font-variant-numeric: tabular-nums;
+    transition: border-color 0.2s ease, background-color 0.3s ease;
     appearance: none;
 }
 
@@ -377,7 +412,7 @@ input[type="number"]:focus, select:focus {
 }
 
 .form-error {
-    margin-top: 20px;
+    margin-top: 16px;
     font-family: var(--font-mono);
     font-size: 13px;
     color: var(--color-danger);
@@ -386,18 +421,21 @@ input[type="number"]:focus, select:focus {
 .hidden { display: none !important; }
 
 /* --- Step 2: Captions --- */
+/* Phone-frame preview left; sliders on top of the right column with the
+   template preset grid directly beneath them (preset access near the
+   preview, everything top-aligned). */
 .caption-workspace {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
     gap: 32px;
     align-items: start;
 }
 
-.preview-row {
-    display: grid;
-    grid-template-columns: minmax(240px, 320px) 1fr;
-    gap: 32px;
-    align-items: start;
+.caption-side {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
 }
 
 .video-canvas {
@@ -416,16 +454,10 @@ input[type="number"]:focus, select:focus {
     object-fit: cover;
 }
 
-.caption-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 32px;
-}
-
 .slider-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 32px;
+    gap: 24px;
 }
 
 @media (max-width: 560px) {
@@ -512,12 +544,15 @@ input[type="number"]:focus, select:focus {
     justify-content: space-between;
     font-family: var(--font-mono);
     font-size: 12px;
-    letter-spacing: 1.2px;
+    letter-spacing: 0.1em;
     color: var(--color-graphite);
     text-transform: uppercase;
 }
 
-.slider-value { color: var(--color-ink); }
+.slider-value {
+    color: var(--color-ink);
+    font-variant-numeric: tabular-nums;
+}
 
 input[type="range"] {
     -webkit-appearance: none;
@@ -581,7 +616,6 @@ input[type="range"]::-moz-range-track {
 .translate-note {
     font-family: var(--font-mono);
     font-size: 12px;
-    letter-spacing: 0.5px;
     color: var(--color-graphite);
     white-space: nowrap;
 }
@@ -589,6 +623,7 @@ input[type="range"]::-moz-range-track {
 .progress-percent {
     font-family: var(--font-mono);
     font-size: 14px;
+    font-variant-numeric: tabular-nums;
     color: var(--color-ink);
 }
 
@@ -598,7 +633,7 @@ input[type="range"]::-moz-range-track {
     background-color: var(--bg-alt);
     border-radius: 2px;
     overflow: hidden;
-    margin-bottom: 32px;
+    margin-bottom: 24px;
 }
 
 .progress-fill {
@@ -613,13 +648,13 @@ input[type="range"]::-moz-range-track {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .stage-pill {
     font-family: var(--font-mono);
     font-size: 11px;
-    letter-spacing: 1px;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     padding: 5px 10px;
     border: 1px solid var(--color-hairline);
@@ -658,8 +693,8 @@ input[type="range"]::-moz-range-track {
    9:16 video stays honest (no crop) while the metadata gets room. */
 .output-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 28px;
+    grid-template-columns: 1fr;
+    gap: 24px;
 }
 
 .output-card {
@@ -709,6 +744,7 @@ input[type="range"]::-moz-range-track {
     color: var(--bg-canvas);
     font-family: var(--font-mono);
     font-size: 13px;
+    font-variant-numeric: tabular-nums;
     padding: 4px 10px;
     border-radius: var(--radius-md);
 }
@@ -716,10 +752,10 @@ input[type="range"]::-moz-range-track {
 .output-body {
     flex: 1;
     min-width: 0;
-    padding: 16px 18px 18px;
+    padding: 16px 20px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
 }
 
 .output-topline {
@@ -732,7 +768,7 @@ input[type="range"]::-moz-range-track {
 .output-topline .clip-id {
     font-family: var(--font-mono);
     font-size: 11px;
-    letter-spacing: 0.5px;
+    font-variant-numeric: tabular-nums;
     color: var(--color-graphite);
     overflow-wrap: anywhere;
 }
@@ -740,7 +776,7 @@ input[type="range"]::-moz-range-track {
 .qc-badge {
     font-family: var(--font-mono);
     font-size: 10px;
-    letter-spacing: 1px;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     padding: 3px 8px;
     border: 1px solid var(--color-hairline);
@@ -758,18 +794,19 @@ input[type="range"]::-moz-range-track {
 .clip-title {
     font-family: var(--font-serif);
     font-size: 19px;
-    font-weight: 400;
+    font-weight: 300;
     line-height: 1.3;
     color: var(--color-ink);
     overflow-wrap: break-word;
+    text-wrap: balance;
 }
 
 .output-hook {
     font-family: var(--font-mono);
     font-size: 11px;
-    letter-spacing: 0.3px;
     line-height: 1.5;
     color: var(--color-graphite);
+    max-width: 72ch;
 }
 
 .output-reason {
@@ -778,6 +815,8 @@ input[type="range"]::-moz-range-track {
     font-weight: 300;
     color: var(--color-iron);
     line-height: 1.4;
+    max-width: 68ch;
+    text-wrap: pretty;
 }
 
 .output-desc {
@@ -785,6 +824,8 @@ input[type="range"]::-moz-range-track {
     color: var(--color-iron);
     line-height: 1.5;
     overflow-wrap: break-word;
+    max-width: 68ch;
+    text-wrap: pretty;
 }
 
 .hashtags-row {
@@ -837,7 +878,7 @@ input[type="range"]::-moz-range-track {
 .output-judges {
     font-family: var(--font-mono);
     font-size: 11px;
-    letter-spacing: 0.5px;
+    font-variant-numeric: tabular-nums;
     color: var(--color-smoke);
 }
 
@@ -875,10 +916,11 @@ input[type="range"]::-moz-range-track {
 /* --- Footer / Navigation --- */
 .action-bar {
     display: flex;
-    justify-content: flex-start;
+    justify-content: flex-end;
     align-items: center;
     gap: 12px;
-    margin-right: 16px;
+    margin-left: auto;
+    margin-bottom: 6px; /* clears the stepper hairline now the row is bottom-aligned */
 }
 
 .btn {
@@ -895,12 +937,13 @@ input[type="range"]::-moz-range-track {
 .btn-primary {
     background-color: var(--color-carbon);
     color: var(--bg-canvas); /* inverts with the theme */
+    min-width: 160px; /* absorbs the label changes (Continue → Processing… → View Results) without width jumps */
 }
 
 .btn-primary:hover { opacity: 0.8; }
 
 .btn-primary:disabled {
-    opacity: 0.3;
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
@@ -933,7 +976,7 @@ input[type="range"]::-moz-range-track {
 .btn-download:hover { border-color: var(--color-ink); }
 
 .btn-download:disabled {
-    opacity: 0.45;
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
@@ -958,9 +1001,8 @@ input[type="range"]::-moz-range-track {
     .studio-container { padding: 40px 16px 56px; gap: 32px; }
     .panel { padding: 28px; }
     .settings-row { grid-template-columns: 1fr; }
-    .output-grid { grid-template-columns: 1fr; }
     .stepper-nav { gap: 18px; }
-    .preview-row { grid-template-columns: 1fr; }
+    .caption-workspace { grid-template-columns: 1fr; gap: 24px; }
     .video-canvas { max-width: 300px; margin: 0 auto; }
 }
 

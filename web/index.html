@@ -6,9 +6,21 @@
     <meta name="color-scheme" content="light dark">
     <title>ShotForge Studio</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23111111'/%3E%3Cpath fill='%23faf9f6' d='M14.5 4 10 13h3l-1.6 7L15.8 9.4h-3z'/%3E%3C/svg%3E">
+    <script>
+        /* Restore the saved theme before the stylesheet applies, so dark
+           users never see a light flash. Defaults to the light attribute. */
+        (function () {
+            try {
+                var t = localStorage.getItem("shotforge-theme");
+                if (t === "dark" || t === "light") {
+                    document.documentElement.dataset.theme = t;
+                }
+            } catch (e) { /* storage unavailable: keep light */ }
+        })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500&family=JetBrains+Mono:wght@400&family=Source+Serif+Pro:ital,wght@0,300;1,300&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400&family=JetBrains+Mono:wght@400&family=Source+Serif+Pro:wght@300&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -38,18 +50,18 @@
     <main class="studio-container">
 
         <nav class="stepper-nav" aria-label="Workflow">
-            <div class="action-bar">
-                <button class="btn btn-ghost" id="btn-back" type="button" style="display:none;">Back</button>
-                <button class="btn btn-primary" id="btn-next" type="button">Continue</button>
-            </div>
             <div class="step-tab active" id="tab-1"><span class="step-num">01</span> Source</div>
             <div class="step-tab" id="tab-2"><span class="step-num">02</span> Typography</div>
             <div class="step-tab" id="tab-3"><span class="step-num">03</span> Processing</div>
             <div class="step-tab" id="tab-4"><span class="step-num">04</span> Export</div>
+            <div class="action-bar">
+                <button class="btn btn-ghost" id="btn-back" type="button" style="display:none;">Back</button>
+                <button class="btn btn-primary" id="btn-next" type="button">Continue</button>
+            </div>
         </nav>
 
         <!-- STEP 1 -->
-        <div class="step-content active" id="step-1">
+        <div class="step-content active" id="step-1" tabindex="-1">
             <div class="panel">
                 <div class="upload-surface" id="upload-surface" role="button" tabindex="0" aria-label="Upload a video file">
                     <svg class="upload-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -91,14 +103,14 @@
         </div>
 
         <!-- STEP 2 -->
-        <div class="step-content" id="step-2">
+        <div class="step-content" id="step-2" tabindex="-1">
             <div class="panel">
                 <div class="caption-workspace">
-                    <div class="preview-row">
-                        <div class="video-canvas">
-                            <img id="preview-img" src="/api/preview/sample?pack=highlight&position=22&scale=1" alt="Caption preview">
-                        </div>
+                    <div class="video-canvas">
+                        <img id="preview-img" src="/api/preview/sample?pack=highlight&position=22&scale=1" alt="Caption preview">
+                    </div>
 
+                    <div class="caption-side">
                         <div class="slider-row">
                             <div class="slider-group">
                                 <div class="slider-header">
@@ -116,9 +128,7 @@
                                 <input type="range" id="caption-size" min="60" max="160" step="5" value="100">
                             </div>
                         </div>
-                    </div>
 
-                    <div class="caption-controls">
                         <div class="input-group">
                             <label>Template Preset</label>
                             <div class="template-grid" id="template-grid">
@@ -131,11 +141,8 @@
         </div>
 
         <!-- STEP 3 -->
-        <div class="step-content" id="step-3">
+        <div class="step-content" id="step-3" tabindex="-1">
             <div class="panel">
-                <h2>Engine Processing</h2>
-                <p class="panel-desc">Whisper transcription, highlight ranking and frame analysis are running locally on the GPU.</p>
-
                 <div class="pipeline-header">
                     <span class="progress-status" id="progress-text">Initializing engine…</span>
                     <span class="translate-note" id="translate-note" hidden></span>
@@ -153,10 +160,8 @@
         </div>
 
         <!-- STEP 4 -->
-        <div class="step-content" id="step-4">
+        <div class="step-content" id="step-4" tabindex="-1">
             <div class="panel panel-flush">
-                <h2>Export</h2>
-                <p class="panel-desc">Clips are rendered and ranked, each with upload-ready metadata. Every score carries its reason; open a tile to review before posting.</p>
                 <div class="output-grid" id="output-grid"></div>
             </div>
         </div>

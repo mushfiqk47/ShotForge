@@ -2,7 +2,8 @@
 /* ShotForge studio UI (vanilla JS, no build step).
  *
  * Flow (4-step stepper):
- *   01 Source      upload / local path / URL, target clips, caption language.
+ *   01 Source      file upload (picker or drag & drop), target clips, caption
+ *                  language.
  *                  Output is always vertical 9:16 (1080x1920), shown as a
  *                  static readout, not a control.
  *   02 Typography  11 caption presets with real WYSIWYG sample previews
@@ -99,9 +100,16 @@ applyTheme((() => {
 /* ------------------------------------------------------------------ */
 
 function goToStep(n) {
+  const changed = state.step !== n;
   state.step = n;
+  let activePanel = null;
   document.querySelectorAll(".step-content").forEach((elx, i) => {
-    elx.classList.toggle("active", i + 1 === n);
+    const active = i + 1 === n;
+    elx.classList.toggle("active", active);
+    if (active) {
+      elx.tabIndex = -1; // programmatic focus target after transitions
+      activePanel = elx;
+    }
   });
   document.querySelectorAll(".step-tab").forEach((elx, i) => {
     elx.classList.remove("active", "completed");
@@ -120,19 +128,28 @@ function goToStep(n) {
     next.textContent = "Start Processing";
     next.disabled = state.running;
   } else if (n === 3) {
-    next.textContent = state.jobDone ? "View Results" : "Processing…";
-    next.disabled = !state.jobDone;
+    // running → disabled status label; done → forward; stopped → recovery
+    next.textContent = state.jobDone ? "View Results" : (state.running ? "Processing…" : "Try Again");
+    next.disabled = state.running;
   } else {
     next.textContent = "Start New Project";
     next.disabled = false;
   }
+
+  // Land keyboard and screen-reader focus inside the new step. Same-step
+  // refreshes (SSE progress updates) never steal focus.
+  if (changed && activePanel) activePanel.focus();
 }
 
+let lastNavClick = 0;
+
 $("#btn-back").addEventListener("click", () => {
+  const now = Date.now();
+  if (now - lastNavClick < 400) return; // double-fire guard
+  lastNavClick = now;
   if (state.step > 1 && !state.running) goToStep(state.step - 1);
 });
 
-let lastNavClick = 0;
 $("#btn-next").addEventListener("click", () => {
   const now = Date.now();
   if (now - lastNavClick < 400) return; // double-fire guard
@@ -145,14 +162,19 @@ $("#btn-next").addEventListener("click", () => {
       return;
     }
     hideError("step1-error");
-    state.top = clampNum(Number($("#top-n").value), 1, 20, 6);
+    const rawTop = $("#top-n").value.trim();
+    state.top = clampNum(rawTop === "" ? NaN : Number(rawTop), 1, 20, 6);
     state.translate = $("#caption-lang").value;
     goToStep(2);
   } else if (state.step === 2) {
     startJob();
-  } else if (state.step === 3 && state.jobDone) {
-    buildExport();
-    goToStep(4);
+  } else if (state.step === 3) {
+    if (state.jobDone) {
+      buildExport();
+      goToStep(4);
+    } else {
+      goToStep(2); // processing stopped with an error — recover via Typography
+    }
   } else if (state.step === 4) {
     resetProject();
   }
@@ -163,6 +185,9 @@ function resetProject() {
   state.result = null;
   state.running = false;
   state.jobDone = false;
+  if (progressES) { progressES.close(); progressES = null; }
+  // Deliberate: source and typography choices are kept so a project can be
+  // re-run quickly; the upload title still shows the retained source.
   const terminal = $("#terminal");
   terminal.replaceChildren();
   logLine("System ready.");
@@ -170,6 +195,8 @@ function resetProject() {
   const note = $("#translate-note");
   note.hidden = true;
   note.textContent = "";
+  hideError("step1-error");
+  hideError("step3-error");
   goToStep(1);
 }
 
@@ -189,32 +216,50 @@ function hideError(id) {
 const uploadSurface = $("#upload-surface");
 uploadSurface.addEventListener("click", () => $("#file-input").click());
 uploadSurface.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" || e.key === " ") $("#file-input").click();
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault(); // role=button: Space must not scroll the page
+    $("#file-input").click();
+  }
 });
 
 $("#file-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
+  e.target.value = ""; // so re-picking the same file fires change again
   if (!file) return;
   await uploadAndUse(file);
 });
 
+function looksLikeVideo(file) {
+  return file.type.startsWith("video/") || /\.(mp4|mov|webm|m4v|mkv)$/i.test(file.name);
+}
+
+let uploadSeq = 0; // token: only the newest pick may update the UI / state
 async function uploadAndUse(file) {
-  uploadSurface.querySelector(".upload-title").textContent = `Uploading ${file.name}…`;
+  const seq = ++uploadSeq;
+  const title = uploadSurface.querySelector(".upload-title");
+  if (!looksLikeVideo(file)) {
+    title.textContent = `"${file.name}" is not a video file — use MP4, MOV or WEBM.`;
+    return;
+  }
+  title.textContent = `Uploading ${file.name}…`;
   try {
     const res = await fetch(`/api/upload?name=${encodeURIComponent(file.name)}`, {
       method: "POST",
       body: file,
     });
     const data = await res.json();
+    if (seq !== uploadSeq) return; // superseded by a newer selection
     if (data.path) {
       state.source = data.path;
-      uploadSurface.querySelector(".upload-title").textContent =
-        `Selected: ${file.name}. Continue to Typography.`;
+      hideError("step1-error");
+      title.textContent = `Selected: ${file.name}. Continue to Typography.`;
     } else {
-      uploadSurface.querySelector(".upload-title").textContent = "Upload failed, try again";
+      title.textContent =
+        `Upload failed${data.error ? ` — ${data.error}` : ""}. Pick "${file.name}" again or drop it here.`;
     }
   } catch {
-    uploadSurface.querySelector(".upload-title").textContent = "Upload failed, try again";
+    if (seq !== uploadSeq) return;
+    title.textContent = `Upload failed — the server did not answer. Pick "${file.name}" again or drop it here.`;
   }
 }
 
@@ -235,8 +280,16 @@ window.addEventListener("drop", async (e) => {
   e.preventDefault();
   dragDepth = 0;
   overlay.classList.add("hidden");
-  const file = e.dataTransfer?.files?.[0];
-  if (!file) return;
+  if (state.running) return; // a job owns the pipeline; ignore drops meanwhile
+  const files = Array.from(e.dataTransfer?.files ?? []);
+  const file = files.find(looksLikeVideo);
+  if (!file) {
+    goToStep(1);
+    uploadSurface.querySelector(".upload-title").textContent = files.length
+      ? `"${files[0].name}" is not a video file — use MP4, MOV or WEBM.`
+      : "Nothing usable was dropped — use a video file (MP4, MOV or WEBM).";
+    return;
+  }
   goToStep(1);
   await uploadAndUse(file);
 });
@@ -273,7 +326,10 @@ async function loadPacks() {
 
     option.addEventListener("click", () => selectPack(id));
     option.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") selectPack(id);
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault(); // role=button: Space must not scroll the page
+        selectPack(id);
+      }
     });
     grid.appendChild(option);
   }
@@ -301,6 +357,28 @@ function samplePreviewUrl(pack) {
 function refreshBigPreview() {
   $("#preview-img").src = samplePreviewUrl(state.pack);
 }
+
+/* Big preview: if the sample render fails, show a fallback plate instead of
+   a broken image; restore the image as soon as a render succeeds again. */
+(function watchBigPreview() {
+  const img = $("#preview-img");
+  img.addEventListener("error", () => {
+    img.style.display = "none";
+    const canvas = img.parentElement;
+    if (canvas && !canvas.querySelector(".preview-fallback")) {
+      const plate = el("div", "preview-fallback",
+        "Preview unavailable — check that the engine server is running.");
+      plate.style.cssText =
+        "position:absolute;inset:0;display:grid;place-items:center;padding:16px;" +
+        "font-family:var(--font-mono);font-size:12px;color:var(--color-smoke);text-align:center;";
+      canvas.appendChild(plate);
+    }
+  });
+  img.addEventListener("load", () => {
+    img.parentElement?.querySelector(".preview-fallback")?.remove();
+    img.style.display = "";
+  });
+})();
 
 let previewTimer = null;
 function debouncedPreviewRefresh() {
@@ -334,6 +412,8 @@ $("#caption-size").addEventListener("input", (e) => {
 function startJob() {
   state.running = true;
   state.jobDone = false;
+  hideError("step3-error");
+  if (progressES) { progressES.close(); progressES = null; } // drop any stale stream
   goToStep(3);
   buildStagePills();
 
@@ -370,7 +450,8 @@ function startJob() {
     })
     .catch((err) => {
       state.running = false;
-      showStepError("step3-error", `Failed to start: ${err.message}`);
+      showStepError("step3-error",
+        `Could not start the job: ${err.message}. Check that the engine server is running, then press Start Processing again.`);
       goToStep(2);
     });
 }
@@ -401,22 +482,30 @@ function setProgress(pct, statusText) {
   if (statusText) $("#progress-text").textContent = statusText;
 }
 
-function listenProgress(jobId) {
+let progressES = null;
+let lastPercent = 0;
+
+function listenProgress(jobId, attempt = 0) {
+  if (progressES) progressES.close();
+  lastPercent = 0;
   const es = new EventSource(`/api/progress/${jobId}`);
+  progressES = es;
   es.onmessage = (event) => {
     let data;
     try { data = JSON.parse(event.data); } catch { return; }
     if (data.stage) markStage(data.stage);
     if (data.note) logLine(`${data.stage}: ${data.note}`);
 
-    const percent = STAGE_PERCENT[data.stage] ?? 0;
+    // Hold the last known percent on an unknown stage instead of regressing to 0.
+    if (data.stage in STAGE_PERCENT) lastPercent = STAGE_PERCENT[data.stage];
     setProgress(
-      percent,
+      lastPercent,
       data.stage === "render" ? `Rendering clips (${data.note ?? ""})` : `${data.stage}…`,
     );
 
     if (data.status === "done") {
       es.close();
+      if (progressES === es) progressES = null;
       setProgress(100, "Process complete.");
       state.running = false;
       state.jobDone = true;
@@ -424,10 +513,66 @@ function listenProgress(jobId) {
     }
     if (data.status === "error") {
       es.close();
-      state.running = false;
-      showStepError("step3-error", "The engine hit an error. Check the log above and try again.");
+      if (progressES === es) progressES = null;
+      jobFailed(jobId, data.error ?? "the engine reported an error");
     }
   };
+  es.onerror = () => {
+    if (progressES === es) progressES = null;
+    if (!state.running) { es.close(); return; }
+    if (es.readyState === EventSource.CLOSED) {
+      // Terminal drop (e.g. the server restarted) — find out what survived.
+      probeJobAfterDrop(jobId, attempt);
+    } else {
+      // Transient drop — EventSource retries on its own; say so instead of
+      // leaving the UI silently stuck on the last stage.
+      setProgress(lastPercent, "Connection lost — retrying…");
+    }
+  };
+}
+
+/* After the SSE stream died for good, ask the server what happened to the
+   job: finished while we were away, failed, still running (reattach), or
+   gone (server restarted and lost the job). */
+async function probeJobAfterDrop(jobId, attempt) {
+  try {
+    const res = await fetch(`/api/rank/${jobId}`);
+    const data = await res.json();
+    if (state.jobId !== jobId || !state.running) return; // a newer job took over
+    if (Array.isArray(data?.clips)) {
+      state.running = false;
+      state.jobDone = true;
+      setProgress(100, "Process complete.");
+      goToStep(3);
+      return;
+    }
+    if (data?.status === "error") {
+      jobFailed(jobId, data.error ?? "the engine reported an error");
+      return;
+    }
+    if (data?.error === "unknown job") {
+      // The server came back up without this job — it was restarted mid-run.
+      jobFailed(jobId, "the engine server restarted and this job was lost");
+      return;
+    }
+    if (attempt < 3) {
+      listenProgress(jobId, attempt + 1); // job still alive — reattach
+      return;
+    }
+    jobFailed(jobId, "the progress stream kept dropping");
+  } catch {
+    if (state.jobId !== jobId || !state.running) return;
+    jobFailed(jobId, "lost contact with the engine server (it may have restarted)");
+  }
+}
+
+function jobFailed(jobId, detail) {
+  if (state.jobId !== jobId) return; // stale event from an older job
+  state.running = false;
+  state.jobDone = false;
+  showStepError("step3-error",
+    `Processing stopped — ${detail}. Press Try Again to return to Typography and start a new run.`);
+  goToStep(3);
 }
 
 function logLine(text) {
@@ -444,7 +589,9 @@ function logLine(text) {
 /* Step 4 — export: rendered clip tiles                                */
 /* ------------------------------------------------------------------ */
 
+let exportSeq = 0; // token: only the newest build may touch the grid
 async function buildExport() {
+  const seq = ++exportSeq;
   const grid = $("#output-grid");
   renderGridState(grid, "loading", "Loading rendered clips…");
 
@@ -453,11 +600,17 @@ async function buildExport() {
     const res = await fetch(`/api/rank/${state.jobId}`);
     result = await res.json();
   } catch (err) {
-    renderGridState(grid, "error", `Could not load results: ${err.message}`, "Retry", buildExport);
+    if (seq !== exportSeq) return;
+    renderGridState(grid, "error",
+      `Could not load results: ${err.message}. Press Retry — if it keeps failing, check the engine server.`,
+      "Retry", buildExport);
     return;
   }
+  if (seq !== exportSeq) return;
   if (!result || result.error || !Array.isArray(result.clips)) {
-    renderGridState(grid, "error", result?.error ?? "Ranking result not available.", "Retry", buildExport);
+    renderGridState(grid, "error",
+      `${result?.error ?? "Ranking result not available."} Press Retry, or start a new project.`,
+      "Retry", buildExport);
     return;
   }
   if (result.clips.length === 0) {
@@ -575,15 +728,31 @@ function buildHashtagRow(hashtags) {
   return row;
 }
 
-let copyResetTimer = null;
+let copyFlash = { button: null, timer: null };
+
+function resetCopyButton(button) {
+  button.textContent = "Copy all";
+  button.classList.remove("copied");
+}
+
 async function copyText(text, button) {
+  if (copyFlash.timer) {
+    // A previous copy button is still flashing — restore it before this one.
+    clearTimeout(copyFlash.timer);
+    resetCopyButton(copyFlash.button);
+    copyFlash.timer = null;
+    copyFlash.button = null;
+  }
   const flash = (msg, copied) => {
     button.textContent = msg;
+    if (!copied) button.title = "Clipboard blocked — select the hashtags and copy them manually.";
     button.classList.toggle("copied", copied);
-    clearTimeout(copyResetTimer);
-    copyResetTimer = setTimeout(() => {
-      button.textContent = "Copy all";
-      button.classList.remove("copied");
+    copyFlash.button = button;
+    copyFlash.timer = setTimeout(() => {
+      resetCopyButton(button);
+      button.title = "";
+      copyFlash.timer = null;
+      copyFlash.button = null;
     }, 1500);
   };
   try {
@@ -653,22 +822,25 @@ async function reRenderClip(clip, card) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     const out = data.outputs?.[0];
-    if (out) {
-      const video = card.querySelector("video");
-      if (video) {
-        video.src = `${out.url || mediaUrl(out.file)}?v=${Date.now()}`;
-        video.load();
-        updateQcBadge(card, out.checks);
-        button.textContent = "Re-render";
-      } else {
-        await buildExport(); // full rebuild picks up the newly rendered file
-        return;
-      }
+    if (!out) throw new Error("the engine returned no output for this clip");
+    const video = card.querySelector("video");
+    if (video) {
+      video.src = `${out.url || mediaUrl(out.file)}?v=${Date.now()}`;
+      video.load();
+      updateQcBadge(card, out.checks);
+      button.textContent = "Re-render";
+    } else {
+      await buildExport(); // full rebuild picks up the newly rendered file
+      return;
     }
   } catch (err) {
-    button.textContent = "Failed";
-    setTimeout(() => { button.textContent = "Re-render"; }, 2000);
-    logLine(`re-render failed: ${err.message}`);
+    // The log window lives on step 3; surface the failure here instead.
+    button.textContent = "Render failed";
+    button.title = `${err.message} — press Re-render to try again.`;
+    setTimeout(() => {
+      button.textContent = "Re-render";
+      button.title = "";
+    }, 2500);
   }
   button.disabled = false;
 }
@@ -706,4 +878,4 @@ function fmt(sec) {
 /* ------------------------------------------------------------------ */
 
 loadPacks();
-goToStep(1);
+goToStep(1); // initial paint: step unchanged, so focus is not stolen from the page
