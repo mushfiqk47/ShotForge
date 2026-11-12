@@ -26,13 +26,16 @@ const PACK_NAMES = {
   classic: "Classic",
   highlight: "Highlight",
   "yellow-pop": "Yellow Pop",
+  impact: "Impact",
+  rainbow: "Rainbow",
   karaoke: "Karaoke",
-  box: "Box",
-  minimal: "Minimal",
-  typewriter: "Typewriter",
+  emoji: "Emoji Pop",
+  marker: "Marker",
   glow: "Glow",
+  box: "Box",
+  editorial: "Editorial",
+  typewriter: "Typewriter",
   fancy: "Fancy",
-  hormozi: "Hormozi",
   "nastaliq-urdu": "Urdu Nastaliq",
 };
 
@@ -317,7 +320,7 @@ async function loadPacks() {
 
     const img = document.createElement("img");
     img.alt = `${PACK_NAMES[id] ?? id} caption preview`;
-    img.src = samplePreviewUrl(id);
+    img.src = samplePreviewUrl(id, true);
     img.addEventListener("error", () => {
       img.replaceWith(el("div", "template-preview-fallback", "no preview"));
     });
@@ -345,12 +348,14 @@ function selectPack(id) {
   refreshBigPreview();
 }
 
-function samplePreviewUrl(pack) {
+function samplePreviewUrl(pack, band) {
   const params = new URLSearchParams({
     pack,
     position: String(state.positionPct),
     scale: String(state.scalePct),
+    v: "2", // cache-buster: v1 entries were full-frame crops at 78% position
   });
+  if (band) params.set("band", "1");
   return `/api/preview/sample?${params.toString()}`;
 }
 
@@ -387,7 +392,7 @@ function debouncedPreviewRefresh() {
     refreshBigPreview();
     for (const option of document.querySelectorAll(".template-option")) {
       const img = option.querySelector("img");
-      if (img) img.src = samplePreviewUrl(option.dataset.pack);
+      if (img) img.src = samplePreviewUrl(option.dataset.pack, true);
     }
   }, 350);
 }
@@ -498,9 +503,20 @@ function listenProgress(jobId, attempt = 0) {
 
     // Hold the last known percent on an unknown stage instead of regressing to 0.
     if (data.stage in STAGE_PERCENT) lastPercent = STAGE_PERCENT[data.stage];
+    // Sub-stage notes ("text 3/24", "camera 2/6") interpolate the bar between
+    // the stage's own percent and the next stage's.
+    let percent = lastPercent;
+    const sub = (data.note ?? "").match(/\b(\d+)\/(\d+)$/);
+    if (sub && data.stage in STAGE_PERCENT) {
+      const order = STAGES.indexOf(data.stage);
+      const next = STAGES.slice(order + 1).find((s) => s in STAGE_PERCENT);
+      const span = (next ? STAGE_PERCENT[next] : 100) - STAGE_PERCENT[data.stage];
+      percent = STAGE_PERCENT[data.stage] + span * (Number(sub[1]) / Number(sub[2]));
+      percent = Math.round(percent * 10) / 10;
+    }
     setProgress(
-      lastPercent,
-      data.stage === "render" ? `Rendering clips (${data.note ?? ""})` : `${data.stage}…`,
+      percent,
+      data.stage === "render" ? `Rendering clips (${data.note ?? ""})` : `${data.stage} ${data.note ?? ""}…`.replace(" …", "…"),
     );
 
     if (data.status === "done") {
@@ -651,6 +667,12 @@ function buildClipCard(clip) {
     video.preload = "metadata";
     if (clip.thumb) video.poster = clip.thumb;
     media.appendChild(video);
+    const expand = el("button", "expand-flag", "Expand");
+    expand.type = "button";
+    expand.setAttribute("aria-label", `Watch clip ${clip.rank} full size`);
+    expand.addEventListener("click", () =>
+      openVideoModal(mediaUrl(clip.video), clip.thumb ?? null));
+    media.appendChild(expand);
   } else if (clip.thumb) {
     const poster = document.createElement("img");
     poster.src = clip.thumb;
@@ -707,6 +729,8 @@ function buildClipCard(clip) {
   }
   const rerender = el("button", "btn-download", "Re-render");
   rerender.type = "button";
+  rerender.title = "Rebuilds this clip with your current typography (preset, position, scale)"
+    + " — use after changing step-2 settings, or if this tile shows “Render failed”.";
   rerender.addEventListener("click", () => reRenderClip(clip, card));
   actions.appendChild(rerender);
   body.appendChild(actions);
@@ -714,6 +738,38 @@ function buildClipCard(clip) {
   card.append(media, body);
   return card;
 }
+
+/* Full-size clip viewer: overlay with a large player. Backdrop click / Esc closes. */
+function openVideoModal(src, poster) {
+  closeModal();
+  const overlay = el("div", "video-modal");
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "Clip preview, full size");
+  const video = document.createElement("video");
+  video.src = src;
+  if (poster) video.poster = poster;
+  video.controls = true;
+  video.autoplay = true;
+  overlay.appendChild(video);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+  document.body.appendChild(overlay);
+  document.body.classList.add("modal-open");
+  video.focus();
+}
+
+function closeModal() {
+  const overlay = document.querySelector(".video-modal");
+  if (!overlay) return;
+  const video = overlay.querySelector("video");
+  if (video) video.pause();
+  overlay.remove();
+  document.body.classList.remove("modal-open");
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeModal();
+});
 
 function buildHashtagRow(hashtags) {
   const row = el("div", "hashtags-row");

@@ -30,7 +30,7 @@ any video ─▶ ffprobe ─▶ 16kHz wav ─▶ whisper.cpp CUDA (word timestam
 
 - **Transcription**: whisper.cpp (CUDA pack) with word-level timestamps; DTW auto-enables if your pack supports it
 - **Ranking**: hybrid heuristic + LLM ensemble — every clip carries its score *and* the reason
-- **Captions**: 11 simple CapCut-style presets — Classic, Highlight (spoken word fills yellow, the default), Yellow Pop, Karaoke, Box, Minimal, Typewriter, Glow, Fancy, Hormozi, Urdu Nastaliq — with WYSIWYG previews burned by the real render pipeline
+- **Captions**: 14 CapCut-style presets — Classic, Highlight (spoken word fills yellow, the default), Yellow Pop, Impact (red fill), Rainbow (per-word colours), Karaoke, Emoji Pop (contextual emoji), Marker (pink fill + underline), Glow, Box, Editorial (letter-spaced caps), Typewriter, Fancy, Urdu Nastaliq — with WYSIWYG previews burned by the real render pipeline
 - **Translation**: word-for-word caption translation/transliteration that preserves karaoke timing exactly
 - **Export**: per-clip title, 5 hashtags, description, poster thumbnail, QC badge; re-render any clip with different typography
 - **Camera analysis**: lfm3-omni reads frame sequences to judge framing and tighten cuts

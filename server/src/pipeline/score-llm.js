@@ -28,13 +28,15 @@ export async function extractFrame(source, timeSec, outPath) {
  *  - Phase B: lfm3-vl scores sampled frames (all visual candidates + top speech).
  * Sequential phases keep the 6 GB VRAM schedule safe (keep_alive:0 + explicit unload).
  */
-export async function llmScore(source, workDir, candidates, log = () => {}) {
+export async function llmScore(source, workDir, candidates, log = () => {}, onStage = () => {}) {
   const shortlist = [...candidates]
     .sort((a, b) => b.heuristic - a.heuristic)
     .slice(0, 24);
 
   log(`llm:text scoring ${shortlist.length} candidates with ${PATHS.models.text}`);
+  let n = 0;
   for (const candidate of shortlist) {
+    onStage("llm", `text ${++n}/${shortlist.length}`);
     try {
       candidate.llm = await scoreCandidateText({ candidate });
     } catch (err) {
@@ -54,7 +56,9 @@ export async function llmScore(source, workDir, candidates, log = () => {}) {
   const visionList = [...visualTargets, ...topSpeech];
 
   log(`llm:vision scoring ${visionList.length} candidates with ${PATHS.models.vision}`);
+  n = 0;
   for (const candidate of visionList) {
+    onStage("llm", `vision ${++n}/${visionList.length}`);
     try {
       const frames = [];
       const len = candidate.end - candidate.start;

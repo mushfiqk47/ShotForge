@@ -2,7 +2,7 @@
  * ShotForge ranking engine — shared by the CLI and the web server.
  * ingest → audio(+energy) → whisper CUDA → shot detect → candidates (speech ∪
  * visual) → heuristic pre-score → lfm3 re-rank → lfm3-vl frames → ensemble →
- * omni analysis → cut snap → caption translate → render (+ checks) →
+ * omni analysis → cut snap → render (+ checks) →
  * metadata + thumbnails.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -10,7 +10,6 @@ import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { PATHS, verifyPaths } from "../paths.js";
-import { unloadModel } from "../ollama.js";
 import { ingest } from "./ingest.js";
 import { extractAudio, energyCurve } from "./audio.js";
 import { transcribe } from "./transcribe.js";
@@ -21,7 +20,6 @@ import { llmScore } from "./score-llm.js";
 import { ensemble } from "./ensemble.js";
 import { analyzeClips, applyOmniAdjustments } from "./omni.js";
 import { renderClip } from "./render.js";
-import { translateWords } from "./translate.js";
 import { generateMetadata } from "./metadata.js";
 import { renderThumbnail } from "./thumb.js";
 
@@ -74,7 +72,6 @@ export function resolveSource(input, { downloadsDir } = {}) {
  * @param {string} opts.workRoot        root for .work dirs
  * @param {number} [opts.top=10]
  * @param {{pack?:string, positionPct?:number, scalePct?:number}} [opts.render]
- * @param {string} [opts.translate="none"]  caption translation mode (TRANSLATE_MODES)
  * @param {boolean} [opts.autoRender=true]  render every ranked clip after scoring
  * @param {(stage:string, note?:string)=>void} [opts.onStage]
  * @param {(line:string)=>void} [opts.log]
@@ -84,7 +81,6 @@ export async function runRank({
   workRoot,
   top = 10,
   render: renderOpts = {},
-  translate = "none",
   autoRender = true,
   onStage = () => {},
   log = () => {},
@@ -144,7 +140,7 @@ export async function runRank({
 
   onStage("llm");
   t = Date.now();
-  const shortlist = await llmScore(videoPath, workDir, all, log);
+  const shortlist = await llmScore(videoPath, workDir, all, log, onStage);
   timings.llm = ms(t);
 
   onStage("ensemble");
@@ -157,7 +153,7 @@ export async function runRank({
 
   onStage("omni");
   t = Date.now();
-  await analyzeClips(videoPath, ranked, workDir, log);
+  await analyzeClips(videoPath, ranked, workDir, log, onStage);
   for (const c of ranked) applyOmniAdjustments(c);
 
   // Word-level caption timing for each clip (sliced by the FINAL window), then
@@ -166,21 +162,6 @@ export async function runRank({
   const wordsByClip = clipWords(absWords, ranked);
   snapCutsToShots(ranked, shots, absWords, wordsByClip, log);
 
-  // Caption translation (ClipShlip headline feature): word-for-word map so
-  // karaoke timings survive; sequential, before the render phase.
-  if (translate && translate !== "none") {
-    onStage("omni", `translating captions → ${translate}`);
-    try {
-      for (const clip of ranked) {
-        const words = wordsByClip.get(clip);
-        if (!words?.length) continue;
-        wordsByClip.set(clip, await translateWords(words, translate, log));
-      }
-    } catch (err) {
-      log(`translate: skipped (${err.message}) — captions stay in the original language`);
-    }
-    await unloadModel(PATHS.models.text);
-  }
   timings.omni = ms(t);
 
   const result = {

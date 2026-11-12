@@ -1,30 +1,20 @@
 #!/usr/bin/env node
 /**
  * ShotForge CLI: rank the best moments in any video.
- *   node server/src/cli-rank.js <videoPath|URL> [--top N]
- *     [--translate none|roman-urdu|urdu|hindi|english] [--out FILE]
+ *   node server/src/cli-rank.js <videoPath|URL> [--top N] [--out FILE]
  */
 import { resolve } from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
 
 import { runRank } from "./pipeline/rank.js";
-import { TRANSLATE_MODES } from "./pipeline/translate.js";
 
 const args = process.argv.slice(2);
 if (args.length === 0 || args[0] === "--help") {
-  console.log(
-    "usage: node cli-rank.js <videoPath|URL> [--top N] [--translate none|roman-urdu|urdu|hindi|english] [--out FILE]",
-  );
+  console.log("usage: node cli-rank.js <videoPath|URL> [--top N] [--out FILE]");
   process.exit(args.length === 0 ? 1 : 0);
 }
 const source = args[0];
 const top = Number(args[args.indexOf("--top") + 1]) || 10;
-const translateFlag = args.indexOf("--translate");
-const translate = translateFlag >= 0 ? args[translateFlag + 1] : "none";
-if (!TRANSLATE_MODES.includes(translate)) {
-  console.error(`[shotforge] unknown --translate mode "${translate}" (use: ${TRANSLATE_MODES.join(", ")})`);
-  process.exit(1);
-}
 const outFlag = args.indexOf("--out");
 const outFile = outFlag >= 0 ? resolve(args[outFlag + 1]) : null;
 
@@ -35,7 +25,6 @@ try {
     source,
     workRoot: resolve("."),
     top,
-    translate,
     onStage: (stage, note) => log(`stage: ${stage}${note ? ` — ${note}` : ""}`),
     log,
   });

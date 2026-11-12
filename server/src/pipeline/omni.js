@@ -120,8 +120,10 @@ export async function analyzeFraming({ videoPath, clip, workDir }) {
 }
 
 /** Analyze a list of ranked clips sequentially; attach clip.omni. */
-export async function analyzeClips(videoPath, clips, workDir, log = () => {}) {
+export async function analyzeClips(videoPath, clips, workDir, log = () => {}, onStage = () => {}) {
+  let n = 0;
   for (const clip of clips) {
+    onStage("omni", `camera ${++n}/${clips.length}`);
     try {
       clip.omni = await analyzeFraming({ videoPath, clip, workDir });
       log(

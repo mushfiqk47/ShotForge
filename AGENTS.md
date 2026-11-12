@@ -9,6 +9,8 @@ ShotForge is a local-first OpusClip alternative: Node 24 ESM, **zero npm depende
 1. **Always use ponytail.** Every coding task runs in ponytail mode (the section below) — smallest complete change, ladder order, never-cut list. Only the user saying "stop ponytail" / "normal mode" switches it off.
 2. **NEVER read the full project.** At the START of a session (or when touching unfamiliar code), build the map from the graphify graph: read `graphify-out/graph.json` (and `graphify-out/GRAPH_REPORT.md` when present) — nodes, edges, communities tell you what exists and where. Then read ONLY the specific files the task touches. Bulk re-reads of the repo are forbidden; the graph is the index.
 3. **Graphify update after EVERY task.** Once a task's edits are done and verified, run `graphify . --update --code-only` from the repo root so the graph stays current for the next session (uses the installed `graphifyy` CLI; `--code-only` because doc semantic extraction has no API key here). If it fails, say so in one line — never skip silently.
+4. **NEVER commit or push until the user says so.** No `git commit`, no `git push` without an explicit instruction from the user in the current conversation — not "it's tidy", not "the work is done", only the user's word.
+5. **NEVER declare a task complete on your own, and never create completion task lists.** Report what was done, what remains, and any risks — then stop and wait. The user decides when something is complete and what continues next.
 
 ## Behavioral guidelines (Karpathy)
 
@@ -77,9 +79,9 @@ Scope note for this repo: "minimal" means minimal *new code* — the locked UI l
 - Stepper row: `01 Source · 02 Typography · 03 Processing · 04 Export`, with Back/Continue at the **far right end** of that row (`margin-left:auto`).
 - Step 1 is **upload-only** (click or drag-drop; no path/URL input — CLI keeps path/URL support). No headings/descriptions on steps 1-2.
 - Step 2: phone-frame preview LEFT (9:16, 320px) with Position/Scale sliders side-by-side and the Template Preset grid directly **in the right column** — all visible in one viewport.
-- Step 4: export tiles **one per row** (1fr), media-left + metadata-right.
+- Step 4: export tiles **one per row** (1fr), media-left + metadata-right; each tile's video gets an **Expand** pill (top-right) opening a full-size viewer overlay (`.video-modal`, Esc/backdrop closes) — don't remove it.
 
-**Caption presets**: 11 CapCut-style packs (`classic`, `highlight` ← default everywhere, `yellow-pop`, `karaoke`, `box`, `minimal`, `typewriter`, `glow`, `fancy`, `hormozi`, `nastaliq-urdu`). Keep every pack's ASS shape (fill = spoken/Primary, base = unspoken/Secondary).
+**Caption presets**: 14 CapCut-style packs (`classic`, `highlight` ← default everywhere, `yellow-pop`, `impact`, `rainbow`, `karaoke`, `emoji`, `marker`, `glow`, `box`, `editorial`, `typewriter`, `fancy`, `nastaliq-urdu`). No two packs may share fill colour + mechanic + font (dedupe rule). Keep every pack's ASS shape (fill = spoken/Primary, base = unspoken/Secondary).
 
 **Design quality floor** (impeccable craft rules — apply to every UI edit):
 - Verify by looking at the rendered result (screenshots at shipping sizes), batched — not after each tweak.

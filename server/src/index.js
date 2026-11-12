@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * ShotForge web server (port 8899).
- *   POST /api/rank        {source: "path or URL", top?, translate?} → {jobId}
+ *   POST /api/rank        {source: "path or URL", top?} → {jobId}
+ *                         (one rank job runs at a time; extras queue in memory)
  *   POST /api/upload      raw body + ?name=file.mp4      → {path}
  *   GET  /api/progress/:jobId   SSE stream (stage/note/log/done/error)
  *   GET  /api/rank/:jobId                               → rank JSON
@@ -19,7 +20,6 @@ import { runRank, resolveSource } from "./pipeline/rank.js";
 import { renderClip } from "./pipeline/render.js";
 import { renderStylePreview, renderSamplePreview } from "./pipeline/preview.js";
 import { PACKS } from "./pipeline/captions.js";
-import { TRANSLATE_MODES } from "./pipeline/translate.js";
 import { detectShots, shotsFromCuts } from "./pipeline/detect.js";
 import { ingest } from "./pipeline/ingest.js";
 import { readFileSync as rf } from "node:fs";
@@ -30,6 +30,28 @@ const WEB_ROOT = resolve(ROOT, "web");
 const WORK_ROOT = ROOT;
 
 const jobs = new Map(); // jobId → {status, stage, note, logs[], result, workDir, videoPath, probe, shots}
+
+// In-memory FIFO: at most ONE rank job runs at a time — Ollama calls must stay
+// sequential on the 6 GB GPU. Extra submissions keep status "queued" and start
+// automatically (success or error) when the current job finishes.
+// Restart clears the queue — accepted limitation, same as the jobs Map.
+const rankQueue = [];
+let rankRunning = false;
+
+function enqueueRank(job, source, top, body) {
+  rankQueue.push({ job, source, top, body });
+  pumpRankQueue();
+}
+
+function pumpRankQueue() {
+  if (rankRunning || !rankQueue.length) return;
+  rankRunning = true;
+  const { job, source, top, body } = rankQueue.shift();
+  startRank(job, source, top, body, () => {
+    rankRunning = false;
+    pumpRankQueue();
+  });
+}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -42,12 +64,10 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       const source = String(body.source ?? "").trim();
       if (!source) return ok(res, 400, { error: "source required (local path or URL)" });
-      // Caption translation mode; unknown values fall back to "none".
-      const translate = TRANSLATE_MODES.includes(body.translate) ? body.translate : "none";
       const jobId = randomUUID();
       const job = { id: jobId, status: "queued", stage: "", note: "", logs: [], created: Date.now() };
       jobs.set(jobId, job);
-      startRank(job, source, Number(body.top) || 6, { ...body, translate });
+      enqueueRank(job, source, Number(body.top) || 6, body);
       return ok(res, 200, { jobId });
     }
 
@@ -66,14 +86,16 @@ const server = http.createServer(async (req, res) => {
       const positionPct = numOrNull(url.searchParams.get("position"));
       const scalePct = numOrNull(url.searchParams.get("scale")) ?? 1;
       const text = url.searchParams.get("text") ?? undefined;
+      const band = url.searchParams.get("band") === "1";
       try {
         const file = await renderSamplePreview({
           pack,
           positionPct,
           scalePct,
           text: text ? String(text).slice(0, 90) : undefined,
+          band,
         });
-        res.writeHead(200, { "Content-Type": "image/jpeg", "Cache-Control": "no-store" });
+        res.writeHead(200, { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" });
         return res.end(rf(file));
       } catch (err) {
         return ok(res, 500, { error: err.message });
@@ -249,7 +271,7 @@ function numOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-function startRank(job, source, top, body = {}) {
+function startRank(job, source, top, body = {}, done = () => {}) {
   job.listeners = new Set();
   job.status = "running";
   const snapshot = () => ({ status: job.status, stage: job.stage, note: job.note });
@@ -258,6 +280,7 @@ function startRank(job, source, top, body = {}) {
       try { l(snapshot()); } catch {}
     }
   };
+  emit(); // queued → running transition; progress listeners see it start
   runRank({
     source,
     workRoot: WORK_ROOT,
@@ -267,7 +290,6 @@ function startRank(job, source, top, body = {}) {
       positionPct: numOrNull(body.positionPct),
       scalePct: numOrNull(body.scalePct) ?? 1,
     },
-    translate: body.translate ?? "none",
     autoRender: body.autoRender !== false,
     onStage: (stage, note) => {
       job.stage = stage;
@@ -290,7 +312,8 @@ function startRank(job, source, top, body = {}) {
       job.status = "error";
       job.error = err.message;
       emit();
-    });
+    })
+    .finally(() => done());
 }
 
 function windowWords(workDir, clip) {

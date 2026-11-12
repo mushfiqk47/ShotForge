@@ -6,6 +6,12 @@ uploads/
 # Preview cache (generated)
 assets/.preview-cache/
 
+# Learned ensemble weights (user analytics — never commit)
+shotforge-weights.json
+
+# Downloaded models (VAD / face / audio — other agents fetch these)
+assets/models/
+
 # Graphify knowledge graph (generated)
 graphify-out/
 

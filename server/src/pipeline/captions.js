@@ -1,5 +1,6 @@
 /**
- * Word-level captions as ASS (libass burn-in) — 11 CapCut-style presets.
+ * Word-level captions as ASS (libass burn-in) — 14 CapCut-style presets.
+ * Each pack is a distinct effect: no two share fill colour + mechanic + font.
  *
  * Karaoke mechanics (libass \k): text is shown in SecondaryColour before its
  * timestamp and fills to PrimaryColour as it is spoken. So per pack:
@@ -42,12 +43,6 @@ export const PACKS = {
     fill: "&H00FFFFFF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 12,
     shadow: 0, box: true, align: 2, positionPct: 18,
   },
-  // Small clean white text, subtle shadow, lower third.
-  minimal: {
-    font: "Inter", size: 44, maxWords: 8, uppercase: false, karaoke: false,
-    fill: "&H00FFFFFF", base: "&H00FFFFFF", outline: "&HA0141414", outlineWidth: 3,
-    shadow: 2, box: false, align: 2, positionPct: 16,
-  },
   // Words appear one at a time and stay.
   typewriter: {
     font: "JetBrainsMono", size: 52, maxWords: 6, uppercase: false, karaoke: false,
@@ -55,11 +50,43 @@ export const PACKS = {
     fill: "&H0000FFC8", base: "&H00FFFFFF", outline: "&H00141820", outlineWidth: 12,
     shadow: 0, box: true, align: 2, positionPct: 18,
   },
-  // White karaoke text with a soft blur glow and a neon accent outline.
+  // White karaoke text filling cyan, soft blur glow, neon accent outline.
   glow: {
     font: "Oswald", size: 64, maxWords: 4, uppercase: true, karaoke: true,
-    fill: "&H0000FFC8", base: "&H00FFFFFF", outline: "&H00FF5096", outlineWidth: 4,
+    fill: "&H00FFE500", base: "&H00FFFFFF", outline: "&H00FF5096", outlineWidth: 4,
     shadow: 3, box: false, align: 2, positionPct: 24, blur: 4,
+  },
+  // Spoken word fills red — same punch as highlight, opposite energy.
+  impact: {
+    font: "Anton", size: 92, maxWords: 3, uppercase: true, karaoke: true,
+    fill: "&H002A2AFF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 8,
+    shadow: 2, box: false, align: 2, positionPct: 22,
+  },
+  // Every word cycles a bright colour as it's spoken.
+  rainbow: {
+    font: "Montserrat", size: 72, maxWords: 3, uppercase: true, karaoke: true,
+    gradient: ["&H002A2AFF", "&H0000D7FF", "&H0030FF8E", "&H00FF5096"],
+    fill: "&H00FFFFFF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 5,
+    shadow: 1, box: false, align: 2, positionPct: 22,
+  },
+  // Karaoke with contextual emoji appended to the first matching word.
+  emoji: {
+    font: "Inter", size: 60, maxWords: 4, uppercase: true, karaoke: true, emoji: true,
+    fill: "&H000A9FFF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 4,
+    shadow: 1, box: false, align: 2, positionPct: 20,
+  },
+  // Letter-spaced caps, no karaoke — fashion/edititorial lower-third.
+  editorial: {
+    font: "Inter", size: 54, maxWords: 4, uppercase: true, karaoke: false, spacing: 6,
+    fill: "&H00FFFFFF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 3,
+    shadow: 1, box: false, align: 2, positionPct: 18,
+  },
+  // Spoken word fills pink and every word is underlined.
+  marker: {
+    font: "Montserrat", size: 64, maxWords: 4, uppercase: false, karaoke: true,
+    underline: true,
+    fill: "&H005F37FF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 4,
+    shadow: 1, box: false, align: 2, positionPct: 20,
   },
   // Italic serif, soft shadow, elegant.
   fancy: {
@@ -67,12 +94,6 @@ export const PACKS = {
     italic: true,
     fill: "&H00BCE8FA", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 3,
     shadow: 3, box: false, align: 2, positionPct: 20,
-  },
-  // Maximalist yellow-highlight variant.
-  hormozi: {
-    font: "Montserrat", size: 80, maxWords: 3, uppercase: true, karaoke: true,
-    fill: "&H0000D7FF", base: "&H00FFFFFF", outline: "&H00000000", outlineWidth: 5,
-    shadow: 1, box: false, align: 2, positionPct: 24,
   },
   // Urdu Nastaliq — essential for Urdu content.
   "nastaliq-urdu": {
@@ -137,7 +158,7 @@ export function buildAss(words, opts = {}) {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    `Style: Cap,${fontFamily},${fontSize},${style.fill},${style.base},${style.outline},&H64000000,1,${style.italic ? 1 : 0},0,0,100,100,0,0,${style.box ? 3 : 1},${style.outlineWidth},${style.shadow},${style.align},80,80,${marginV},1`,
+    `Style: Cap,${fontFamily},${fontSize},${style.fill},${style.base},${style.outline},&H64000000,1,${style.italic ? 1 : 0},${style.underline ? 1 : 0},0,100,100,${style.spacing ?? 0},0,${style.box ? 3 : 1},${style.outlineWidth},${style.shadow},${style.align},80,80,${marginV},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -189,15 +210,18 @@ function lineEvents(words, style, isRtl) {
 }
 
 function typewriterEvents(words, style, isRtl) {
-  // Each word appears when spoken and stays: one Dialogue per word,
-  // spanning from that word's start to the end of its line.
+  // Each word appears when spoken and stays: one Dialogue per cumulative
+  // text, ending when the NEXT word starts (so events replace each other —
+  // letting them run to lineEnd overlapped and libass stacked them).
   const events = [];
   const lines = withLinger(groupLines(words, style.maxWords, isRtl));
   for (const { words: line, end: lineEnd } of lines) {
     line.forEach((w, i) => {
       const text = line.slice(0, i + 1).map((x) => x.word).join(" ");
+      const next = line[i + 1];
+      const end = next ? Math.max(next.start, w.start + 0.05) : lineEnd;
       events.push(
-        `Dialogue: 0,${assTime(w.start)},${assTime(lineEnd)},Cap,,0,0,0,,${text}`,
+        `Dialogue: 0,${assTime(w.start)},${assTime(end)},Cap,,0,0,0,,${text}`,
       );
     });
   }

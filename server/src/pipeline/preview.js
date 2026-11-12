@@ -1,8 +1,8 @@
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PATHS } from "../paths.js";
 import { run } from "../proc.js";
-import { buildAss } from "./captions.js";
+import { buildAss, PACKS } from "./captions.js";
 import { FONT_FILES } from "./font-files.js";
 
 /**
@@ -101,6 +101,8 @@ function copyFonts(dir) {
 /**
  * Job-independent WYSIWYG preview: the same ASS pipeline burned onto a neutral
  * synthetic frame, for the Typography step before any video is processed.
+ * `band: true` crops to the caption area (CapCut-style preset thumbnails —
+ * the caption fills the tile); full frame otherwise.
  */
 export async function renderSamplePreview({
   pack = "highlight",
@@ -109,6 +111,7 @@ export async function renderSamplePreview({
   width = 405,
   height = 720,
   text = "This is how your captions will look",
+  band = false,
 }) {
   const dir = join(PATHS.fontsDir, "..", ".preview-cache");
   mkdirSync(join(dir, "fonts"), { recursive: true });
@@ -131,13 +134,24 @@ export async function renderSamplePreview({
   });
   writeFileSync(join(dir, "sample.ass"), ass);
 
-  const outName = `sample_${pack}_${Math.round(positionPct ?? -1)}_${Math.round(scalePct * 100)}.jpg`;
+  const outName = `sample_${pack}_${Math.round(positionPct ?? -1)}_${Math.round(scalePct * 100)}${band ? "_band" : ""}.jpg`;
+  if (existsSync(join(dir, outName))) return join(dir, outName);
+
+  // Caption band: same MarginV math as buildAss, cropped around the caption.
+  const posPct = positionPct ?? PACKS[pack]?.positionPct ?? 20;
+  const marginV = 1920 * Math.min(0.92, Math.max(0.02, posPct / 100));
+  const bandH = 560;
+  const bandY = Math.round(Math.min(1920 - bandH, Math.max(0, 1920 - marginV - bandH / 2)));
+  const vf = band
+    ? `subtitles=sample.ass:fontsdir=fonts,crop=1080:${bandH}:0:${bandY},scale=${width}:${Math.round((width * bandH) / 1080)}`
+    : `subtitles=sample.ass:fontsdir=fonts,scale=${width}:${height}`;
+
   await run(
     PATHS.ffmpeg,
     [
       "-hide_banner", "-loglevel", "error", "-y",
       "-f", "lavfi", "-i", `color=c=0x22201e:size=1080x1920:duration=6:rate=1`,
-      "-vf", `subtitles=sample.ass:fontsdir=fonts,scale=${width}:${height}`,
+      "-vf", vf,
       "-ss", "2.2",
       "-frames:v", "1",
       "-q:v", "4",
